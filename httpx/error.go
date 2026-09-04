@@ -28,7 +28,7 @@ func NewHTTPError(statusCode int, err error) *HTTPError {
 	}
 }
 
-// Write writes the HTTP error as a JSON response with the appropriate status code.
+// WriteJSON writes the HTTP error as a JSON response with the appropriate status code.
 func (e *HTTPError) WriteJSON(w http.ResponseWriter) error {
 	return WriteJSON(w, e.StatusCode, Message(e.Message.Error()))
 }

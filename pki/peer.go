@@ -4,12 +4,16 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
+	"fmt"
 )
 
 type PeerCertificate x509.Certificate
 
 func (pc *PeerCertificate) MarshalJSON() ([]byte, error) {
 	b := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: pc.Raw})
+	if b == nil {
+		return nil, fmt.Errorf("failed to encode certificate to PEM")
+	}
 	return json.Marshal(b)
 }
 
@@ -18,8 +22,11 @@ func (pc *PeerCertificate) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &buf); err != nil {
 		return err
 	}
-	derBytes, _ := pem.Decode(buf)
-	c, err := x509.ParseCertificate(derBytes.Bytes)
+	block, _ := pem.Decode(buf)
+	if block == nil {
+		return fmt.Errorf("failed to decode PEM block")
+	}
+	c, err := x509.ParseCertificate(block.Bytes)
 	if err != nil {
 		return err
 	}

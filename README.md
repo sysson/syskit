@@ -206,7 +206,7 @@ func main() {
 	ctx := context.Background()
 	
 	// Create a file-based certificate store
-	store := file.NewStore("/etc/pki/certs")
+	store := file.New("/etc/pki/certs")
 	
 	// Load a saved leaf certificate and its CA
 	ca, leaf, err := store.LoadLeaf(ctx, "server")
