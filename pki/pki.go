@@ -21,30 +21,6 @@ import (
 	"time"
 )
 
-// KeyType selects the public key algorithm used for every certificate in a
-// bundle. The CA and its leaves always share the same algorithm.
-type KeyType string
-
-const (
-	KeyTypeECDSA   KeyType = "ecdsa"
-	KeyTypeEd25519 KeyType = "ed25519"
-	KeyTypeRSA     KeyType = "rsa"
-)
-
-const (
-	DefaultKeyType    = KeyTypeECDSA
-	DefaultRSABits    = 3072
-	DefaultCADuration = 3650 * 24 * time.Hour
-	DefaultDuration   = 365 * 24 * time.Hour
-
-	blockCertificate = "CERTIFICATE"
-	blockPrivateKey  = "PRIVATE KEY"
-
-	// Backdate to absorb clock skew between the issuing machine and the peer
-	// verifying the certificate.
-	backdate = time.Hour
-)
-
 // ErrNoAuthority is returned by callers loading a CA that isn't present in
 // their backing store.
 var ErrNoAuthority = errors.New("no certificate authority found")
@@ -53,51 +29,6 @@ var ErrNoAuthority = errors.New("no certificate authority found")
 type KeyPair struct {
 	Cert []byte
 	Key  []byte
-}
-
-// Options controls the contents of an Authority and the leaves it issues.
-// The zero value is usable and yields ECDSA P-256 keys with the default
-// validity periods; Organization and CACommonName are left blank if unset.
-type Options struct {
-	KeyType KeyType
-	// RSABits is only consulted when KeyType is KeyTypeRSA.
-	RSABits int
-
-	// CADuration and Duration are the validity periods of the CA and of the
-	// leaf certificates respectively.
-	CADuration time.Duration
-	Duration   time.Duration
-
-	Organization string
-	CACommonName string
-}
-
-func (o *Options) applyDefaults() error {
-	if o.KeyType == "" {
-		o.KeyType = DefaultKeyType
-	}
-	switch o.KeyType {
-	case KeyTypeECDSA, KeyTypeEd25519, KeyTypeRSA:
-	default:
-		return fmt.Errorf("unsupported key type %q: must be one of %s, %s, %s",
-			o.KeyType, KeyTypeECDSA, KeyTypeEd25519, KeyTypeRSA)
-	}
-	if o.RSABits == 0 {
-		o.RSABits = DefaultRSABits
-	}
-	if o.KeyType == KeyTypeRSA && o.RSABits < 2048 {
-		return fmt.Errorf("rsa key size %d is too small: minimum is 2048", o.RSABits)
-	}
-	if o.CADuration == 0 {
-		o.CADuration = DefaultCADuration
-	}
-	if o.Duration == 0 {
-		o.Duration = DefaultDuration
-	}
-	if o.CADuration <= 0 || o.Duration <= 0 {
-		return fmt.Errorf("certificate durations must be positive")
-	}
-	return nil
 }
 
 // Authority is a certificate authority capable of issuing leaf certificates.
@@ -116,12 +47,16 @@ func (a *Authority) KeyPair() KeyPair { return a.pair }
 func (a *Authority) Certificate() *x509.Certificate { return a.cert }
 
 // NewAuthority creates a new self-signed certificate authority.
-func NewAuthority(opts Options) (*Authority, error) {
-	if err := opts.applyDefaults(); err != nil {
+func NewAuthority(opts ...PKIOptions) (*Authority, error) {
+	o := defaultOptions()
+	for _, opt := range opts {
+		opt(&o)
+	}
+	if err := o.Validate(); err != nil {
 		return nil, err
 	}
 
-	key, err := generateKey(opts.KeyType, opts.RSABits)
+	key, err := generateKey(o.KeyType, o.RSABits)
 	if err != nil {
 		return nil, fmt.Errorf("generating CA key: %w", err)
 	}
@@ -135,11 +70,11 @@ func NewAuthority(opts Options) (*Authority, error) {
 	tmpl := &x509.Certificate{
 		SerialNumber: serial,
 		Subject: pkix.Name{
-			Organization: []string{opts.Organization},
-			CommonName:   opts.CACommonName,
+			Organization: []string{o.Organization},
+			CommonName:   o.CACommonName,
 		},
 		NotBefore:             now.Add(-backdate),
-		NotAfter:              now.Add(opts.CADuration),
+		NotAfter:              now.Add(o.CADuration),
 		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageCRLSign,
 		BasicConstraintsValid: true,
 		IsCA:                  true,
@@ -166,16 +101,13 @@ func NewAuthority(opts Options) (*Authority, error) {
 		cert: cert,
 		key:  key,
 		pair: KeyPair{Cert: encodePEM(blockCertificate, der), Key: keyPEM},
-		opts: opts,
+		opts: o,
 	}, nil
 }
 
 // LoadAuthority restores an Authority from previously generated PEM blocks so
 // that new leaves can be issued without rotating the CA.
-func LoadAuthority(pair KeyPair, opts Options) (*Authority, error) {
-	if err := opts.applyDefaults(); err != nil {
-		return nil, err
-	}
+func LoadAuthority(pair KeyPair) (*Authority, error) {
 
 	block, _ := pem.Decode(pair.Cert)
 	if block == nil || block.Type != blockCertificate {
@@ -201,8 +133,25 @@ func LoadAuthority(pair KeyPair, opts Options) (*Authority, error) {
 	if !ok {
 		return nil, fmt.Errorf("CA key of type %T cannot sign", parsed)
 	}
+	o := defaultOptions()
+	if len(cert.Subject.Organization) > 0 {
+		o.Organization = cert.Subject.Organization[0]
+	}
+	o.CACommonName = cert.Subject.CommonName
+	o.CADuration = cert.NotAfter.Sub(cert.NotBefore)
 
-	return &Authority{cert: cert, key: key, pair: pair, opts: opts}, nil
+	switch key := key.(type) {
+	case *ecdsa.PrivateKey:
+		o.KeyType = KeyTypeECDSA
+	case ed25519.PrivateKey:
+		o.KeyType = KeyTypeEd25519
+	case *rsa.PrivateKey:
+		o.KeyType = KeyTypeRSA
+		o.RSABits = key.N.BitLen()
+	default:
+		return nil, fmt.Errorf("unsupported CA key type %T", key)
+	}
+	return &Authority{cert: cert, key: key, pair: pair, opts: o}, nil
 }
 
 // LeafRequest describes a certificate to be issued by an Authority.
