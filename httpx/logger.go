@@ -37,17 +37,17 @@ func ErrorLogger(handler HTTPErrorFunc) http.HandlerFunc {
 		}
 		// If the error is an HTTPError, handle it accordingly.
 		if httpResp, ok := errors.AsType[*HTTPError](err); ok {
-			// Log server errors (status code >= 500) and return a generic internal server error response.
+			// Log server errors (status code >= 500) and to prevent leaking internal server details to the client, always return a generic internal server error message for server errors.
 			if httpResp.StatusCode >= 500 {
 				logx.G(r.Context()).Error("handler returned error", "method", r.Method, "url", r.URL.String(), "error", httpResp.Error())
-				_ = WriteJSON(w, http.StatusInternalServerError, Message(ErrHTTPServerError.Error()))
+				_ = WriteJSON(w, httpResp.StatusCode, Message(ErrHTTPServerError.Error()))
 				return
 			} else if httpResp.StatusCode >= 400 {
 				// Log errors (status code >= 400 and < 500) at the warning level.
 				logx.G(r.Context()).Warn("handler returned client error", "method", r.Method, "url", r.URL.String(), "error", httpResp.Error())
 			}
 			// For non-server errors, write the specific HTTP error response.
-			_ = httpResp.Write(w)
+			_ = httpResp.WriteJSON(w)
 			return
 		}
 		// If the error is not an HTTPError, treat it as a server error.

@@ -177,6 +177,72 @@ func loggingMiddleware(next http.Handler) http.Handler {
 }
 ```
 
+
+---
+
+### [`pki`](pki/) — Public Key Infrastructure Management
+
+Utilities for managing certificates, keys, and PKI operations with pluggable storage backends. Supports storing certificates in both the filesystem and Kubernetes secrets.
+
+**Features:**
+- Certificate and key generation and management
+- TLS configuration helpers
+- Pluggable storage backends (file system, Kubernetes secrets)
+- Peer certificate validation and inspection
+- Secure key material handling
+
+**Example:**
+```go
+package main
+
+import (
+	"context"
+	"net/http"
+	"github.com/sysson/syskit/pki"
+	"github.com/sysson/syskit/pki/file"
+)
+
+func main() {
+	ctx := context.Background()
+	
+	// Create a file-based certificate store
+	store := file.NewStore("/etc/pki/certs")
+	
+	// Load a saved leaf certificate and its CA
+	ca, leaf, err := store.LoadLeaf(ctx, "server")
+	if err != nil {
+		panic(err)
+	}
+	
+	// Parse certificate information for inspection
+	info, err := pki.ParseCertInfo(leaf.Cert)
+	if err != nil {
+		panic(err)
+	}
+	println("Server cert CN:", info.CommonName)
+	
+	// Create a server TLS configuration with mutual TLS
+	serverTLSConfig, err := pki.ServerTLSConfig(leaf, ca.Cert)
+	if err != nil {
+		panic(err)
+	}
+	
+	// Create an HTTP server with mTLS
+	server := &http.Server{
+		Addr:      ":8443",
+		TLSConfig: serverTLSConfig,
+	}
+	server.ListenAndServeTLS("", "")
+}
+```
+
+**Key Components:**
+- `Store` — Interface for certificate/key storage with filesystem and Kubernetes backends
+- `Authority` — Issues self-signed CA and leaf certificates
+- `KeyPair` — PEM-encoded certificate and private key
+- `ServerTLSConfig` / `ClientTLSConfig` — Build mTLS configurations
+- `ParseCertInfo` — Extract and inspect certificate metadata
+
 ---
 
 ## Installation
