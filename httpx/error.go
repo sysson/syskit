@@ -1,10 +1,10 @@
 // Package httpx provides utilities for handling HTTP errors and responses in a consistent manner.
 //
 // #Basic Usage
-// 
+//
 // Example: Handling a not found error.
 // httpx.NotFound(errors.New("resource not found")).Write(w)
-// 
+//
 
 package httpx
 
@@ -28,8 +28,8 @@ func NewHTTPError(statusCode int, err error) *HTTPError {
 	}
 }
 
-// Write writes the HTTP error as a JSON response with the appropriate status code.
-func (e *HTTPError) Write(w http.ResponseWriter) error {
+// WriteJSON writes the HTTP error as a JSON response with the appropriate status code.
+func (e *HTTPError) WriteJSON(w http.ResponseWriter) error {
 	return WriteJSON(w, e.StatusCode, Message(e.Message.Error()))
 }
 
