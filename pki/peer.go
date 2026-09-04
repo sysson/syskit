@@ -23,8 +23,8 @@ func (pc *PeerCertificate) UnmarshalJSON(b []byte) error {
 		return err
 	}
 	block, _ := pem.Decode(buf)
-	if block == nil {
-		return fmt.Errorf("failed to decode PEM block")
+	if block == nil || block.Type != "CERTIFICATE" {
+		return fmt.Errorf("peer certificate is not a valid CERTIFICATE PEM block")
 	}
 	c, err := x509.ParseCertificate(block.Bytes)
 	if err != nil {
