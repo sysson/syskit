@@ -20,7 +20,7 @@ func TestGenerateAndIssueVerifies(t *testing.T) {
 				opts.RSABits = 2048
 			}
 
-			ca, err := NewAuthority(opts)
+			ca, err := NewAuthority(authorityOptions(opts)...)
 			if err != nil {
 				t.Fatalf("NewAuthority: %v", err)
 			}
@@ -60,7 +60,7 @@ func TestGenerateAndIssueVerifies(t *testing.T) {
 func TestCAConstraints(t *testing.T) {
 	t.Parallel()
 
-	ca, err := NewAuthority(Options{})
+	ca, err := NewAuthority()
 	if err != nil {
 		t.Fatalf("NewAuthority: %v", err)
 	}
@@ -83,18 +83,24 @@ func TestCAConstraints(t *testing.T) {
 func TestReloadAuthorityIssuesTrustedLeaves(t *testing.T) {
 	t.Parallel()
 
-	opts := Options{}
-	first, err := NewAuthority(opts)
+	first, err := NewAuthority(
+		WithKeyType(KeyTypeRSA),
+		WithRSABits(2048),
+		WithOrganization("test"),
+	)
 	if err != nil {
 		t.Fatalf("NewAuthority: %v", err)
 	}
 
-	reloaded, err := LoadAuthority(first.KeyPair(), opts)
+	reloaded, err := LoadAuthority(first.KeyPair())
 	if err != nil {
 		t.Fatalf("LoadAuthority: %v", err)
 	}
 	if !reloaded.Certificate().Equal(first.Certificate()) {
 		t.Fatal("reloaded CA differs from the original")
+	}
+	if got := reloaded.opts.Organization; got != "test" {
+		t.Errorf("organization = %q, want test", got)
 	}
 
 	leaf, err := reloaded.Issue(LeafRequest{
@@ -114,6 +120,9 @@ func TestReloadAuthorityIssuesTrustedLeaves(t *testing.T) {
 		KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 	}); err != nil {
 		t.Errorf("leaf issued after reload not trusted by original CA: %v", err)
+	}
+	if got := parseCert(t, leaf.Cert).PublicKeyAlgorithm; got != x509.RSA {
+		t.Errorf("leaf public key algorithm = %v, want RSA", got)
 	}
 }
 
@@ -137,7 +146,7 @@ func TestLeafKeyUsageByAlgorithm(t *testing.T) {
 			if tt.keyType == KeyTypeRSA {
 				opts.RSABits = 2048
 			}
-			ca, err := NewAuthority(opts)
+			ca, err := NewAuthority(authorityOptions(opts)...)
 			if err != nil {
 				t.Fatalf("NewAuthority: %v", err)
 			}
@@ -164,7 +173,7 @@ func TestLeafKeyUsageByAlgorithm(t *testing.T) {
 func TestLeafNotAfterClampedToCA(t *testing.T) {
 	t.Parallel()
 
-	ca, err := NewAuthority(Options{CADuration: 24 * time.Hour, Duration: 365 * 24 * time.Hour})
+	ca, err := NewAuthority(WithCADuration(24*time.Hour), WithDuration(365*24*time.Hour))
 	if err != nil {
 		t.Fatalf("NewAuthority: %v", err)
 	}
@@ -192,7 +201,7 @@ func TestOptionsValidation(t *testing.T) {
 	for name, opts := range tests {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			if _, err := NewAuthority(opts); err == nil {
+			if _, err := NewAuthority(authorityOptions(opts)...); err == nil {
 				t.Fatal("expected an error, got nil")
 			}
 		})
@@ -202,7 +211,7 @@ func TestOptionsValidation(t *testing.T) {
 func TestIssueRequiresCommonNameAndKeyUsage(t *testing.T) {
 	t.Parallel()
 
-	ca, err := NewAuthority(Options{})
+	ca, err := NewAuthority()
 	if err != nil {
 		t.Fatalf("NewAuthority: %v", err)
 	}
@@ -218,7 +227,7 @@ func TestIssueRequiresCommonNameAndKeyUsage(t *testing.T) {
 func TestLoadAuthorityRejectsNonCA(t *testing.T) {
 	t.Parallel()
 
-	ca, err := NewAuthority(Options{})
+	ca, err := NewAuthority()
 	if err != nil {
 		t.Fatalf("NewAuthority: %v", err)
 	}
@@ -230,7 +239,7 @@ func TestLoadAuthorityRejectsNonCA(t *testing.T) {
 		t.Fatalf("Issue: %v", err)
 	}
 
-	_, err = LoadAuthority(KeyPair{Cert: leaf.Cert, Key: leaf.Key}, Options{})
+	_, err = LoadAuthority(KeyPair{Cert: leaf.Cert, Key: leaf.Key})
 	if err == nil {
 		t.Fatal("expected an error loading a non-CA certificate as an authority")
 	}
@@ -254,4 +263,27 @@ func parseCert(t *testing.T, pemBytes []byte) *x509.Certificate {
 		t.Fatalf("parsing certificate: %v", err)
 	}
 	return cert
+}
+
+func authorityOptions(o Options) []PKIOptions {
+	var opts []PKIOptions
+	if o.KeyType != "" {
+		opts = append(opts, WithKeyType(o.KeyType))
+	}
+	if o.RSABits != 0 {
+		opts = append(opts, WithRSABits(o.RSABits))
+	}
+	if o.CADuration != 0 {
+		opts = append(opts, WithCADuration(o.CADuration))
+	}
+	if o.Duration != 0 {
+		opts = append(opts, WithDuration(o.Duration))
+	}
+	if o.Organization != "" {
+		opts = append(opts, WithOrganization(o.Organization))
+	}
+	if o.CACommonName != "" {
+		opts = append(opts, WithCACommonName(o.CACommonName))
+	}
+	return opts
 }
