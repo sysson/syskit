@@ -17,7 +17,6 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
-	"net"
 	"time"
 )
 
@@ -47,12 +46,12 @@ func (a *Authority) KeyPair() KeyPair { return a.pair }
 func (a *Authority) Certificate() *x509.Certificate { return a.cert }
 
 // NewAuthority creates a new self-signed certificate authority.
-func NewAuthority(opts ...PKIOptions) (*Authority, error) {
-	o := defaultOptions()
+func NewAuthority(opts ...OptionFunc) (*Authority, error) {
+	o := defaultOptions(WithDuration(DefaultCADuration))
 	for _, opt := range opts {
 		opt(&o)
 	}
-	if err := o.Validate(); err != nil {
+	if err := o.validate(); err != nil {
 		return nil, err
 	}
 
@@ -71,10 +70,10 @@ func NewAuthority(opts ...PKIOptions) (*Authority, error) {
 		SerialNumber: serial,
 		Subject: pkix.Name{
 			Organization: []string{o.Organization},
-			CommonName:   o.CACommonName,
+			CommonName:   o.CommonName,
 		},
 		NotBefore:             now.Add(-backdate),
-		NotAfter:              now.Add(o.CADuration),
+		NotAfter:              now.Add(o.Duration),
 		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageCRLSign,
 		BasicConstraintsValid: true,
 		IsCA:                  true,
@@ -137,8 +136,8 @@ func LoadAuthority(pair KeyPair) (*Authority, error) {
 	if len(cert.Subject.Organization) > 0 {
 		o.Organization = cert.Subject.Organization[0]
 	}
-	o.CACommonName = cert.Subject.CommonName
-	o.CADuration = cert.NotAfter.Sub(cert.NotBefore)
+	o.CommonName = cert.Subject.CommonName
+	o.Duration = cert.NotAfter.Sub(cert.NotBefore)
 
 	switch key := key.(type) {
 	case *ecdsa.PrivateKey:
@@ -154,23 +153,19 @@ func LoadAuthority(pair KeyPair) (*Authority, error) {
 	return &Authority{cert: cert, key: key, pair: pair, opts: o}, nil
 }
 
-// LeafRequest describes a certificate to be issued by an Authority.
-type LeafRequest struct {
-	CommonName string
-	// Organization overrides the Authority's default organization.
-	Organization string
-	ExtKeyUsage  []x509.ExtKeyUsage
-	DNSNames     []string
-	IPAddresses  []net.IP
-}
-
 // Issue signs a new leaf certificate with a freshly generated key.
-func (a *Authority) Issue(req LeafRequest) (KeyPair, error) {
-	if req.CommonName == "" {
-		return KeyPair{}, fmt.Errorf("leaf certificate common name is required")
+func (a *Authority) Issue(opts ...OptionFunc) (KeyPair, error) {
+	req := defaultOptions()
+	for _, o := range opts {
+		o(&req)
 	}
-	if len(req.ExtKeyUsage) == 0 {
-		return KeyPair{}, fmt.Errorf("leaf certificate %q needs at least one extended key usage", req.CommonName)
+	// Copy the CA's key type and RSA bits to the leaf request so that the leaf
+	// is generated with the same key type as the CA. This is important for
+	// compatibility with some clients that may not support certain key types.
+	req.KeyType = a.opts.KeyType
+	req.RSABits = a.opts.RSABits
+	if err := req.validateLeafRequest(); err != nil {
+		return KeyPair{}, err
 	}
 
 	key, err := generateKey(a.opts.KeyType, a.opts.RSABits)

@@ -6,6 +6,8 @@ import (
 	"errors"
 	"testing"
 	"time"
+
+	"github.com/sysson/syskit/tlsconfig"
 )
 
 func TestGenerateAndIssueVerifies(t *testing.T) {
@@ -15,26 +17,30 @@ func TestGenerateAndIssueVerifies(t *testing.T) {
 		t.Run(string(kt), func(t *testing.T) {
 			t.Parallel()
 
-			opts := Options{KeyType: kt, Organization: "test", CACommonName: "test-ca"}
+			opts := Options{KeyType: kt, Organization: "test", CommonName: "test-ca"}
 			if kt == KeyTypeRSA {
 				opts.RSABits = 2048
 			}
 
-			ca, err := NewAuthority(authorityOptions(opts)...)
+			ca, err := NewAuthority(
+				WithKeyType(opts.KeyType),
+				WithRSABits(opts.RSABits),
+				WithOrganization(opts.Organization),
+				WithCommonName(opts.CommonName))
 			if err != nil {
 				t.Fatalf("NewAuthority: %v", err)
 			}
 
-			leaf, err := ca.Issue(LeafRequest{
-				CommonName:  "leaf",
-				ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
-				DNSNames:    []string{"leaf.example.com"},
-			})
+			leaf, err := ca.Issue(
+				WithCommonName("leaf"),
+				WithExtKeyUsage([]x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}),
+				WithDNSNames([]string{"leaf.example.com"}),
+			)
 			if err != nil {
 				t.Fatalf("Issue: %v", err)
 			}
 
-			pool, err := CertPool(ca.KeyPair().Cert)
+			pool, err := tlsconfig.CertPool(ca.KeyPair().Cert)
 			if err != nil {
 				t.Fatalf("CertPool: %v", err)
 			}
@@ -47,10 +53,10 @@ func TestGenerateAndIssueVerifies(t *testing.T) {
 				t.Errorf("verifying leaf certificate: %v", err)
 			}
 
-			if _, err := ServerTLSConfig(leaf, ca.KeyPair().Cert); err != nil {
+			if _, err := tlsconfig.ServerTLSConfig(); err != nil {
 				t.Errorf("ServerTLSConfig: %v", err)
 			}
-			if _, err := ClientTLSConfig(leaf, ca.KeyPair().Cert); err != nil {
+			if _, err := tlsconfig.ClientTLSConfig(); err != nil {
 				t.Errorf("ClientTLSConfig: %v", err)
 			}
 		})
@@ -103,15 +109,15 @@ func TestReloadAuthorityIssuesTrustedLeaves(t *testing.T) {
 		t.Errorf("organization = %q, want test", got)
 	}
 
-	leaf, err := reloaded.Issue(LeafRequest{
-		CommonName:  "leaf",
-		ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
-	})
+	leaf, err := reloaded.Issue(
+		WithCommonName("leaf"),
+		WithExtKeyUsage([]x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}),
+	)
 	if err != nil {
 		t.Fatalf("Issue: %v", err)
 	}
 
-	pool, err := CertPool(first.KeyPair().Cert)
+	pool, err := tlsconfig.CertPool(first.KeyPair().Cert)
 	if err != nil {
 		t.Fatalf("CertPool: %v", err)
 	}
@@ -146,14 +152,17 @@ func TestLeafKeyUsageByAlgorithm(t *testing.T) {
 			if tt.keyType == KeyTypeRSA {
 				opts.RSABits = 2048
 			}
-			ca, err := NewAuthority(authorityOptions(opts)...)
+			ca, err := NewAuthority(
+				WithKeyType(opts.KeyType),
+				WithRSABits(opts.RSABits),
+			)
 			if err != nil {
 				t.Fatalf("NewAuthority: %v", err)
 			}
-			leaf, err := ca.Issue(LeafRequest{
-				CommonName:  "leaf",
-				ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
-			})
+			leaf, err := ca.Issue(
+				WithCommonName("leaf"),
+				WithExtKeyUsage([]x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}),
+			)
 			if err != nil {
 				t.Fatalf("Issue: %v", err)
 			}
@@ -173,14 +182,15 @@ func TestLeafKeyUsageByAlgorithm(t *testing.T) {
 func TestLeafNotAfterClampedToCA(t *testing.T) {
 	t.Parallel()
 
-	ca, err := NewAuthority(WithCADuration(24*time.Hour), WithDuration(365*24*time.Hour))
+	ca, err := NewAuthority(WithDuration(24 * time.Hour))
 	if err != nil {
 		t.Fatalf("NewAuthority: %v", err)
 	}
-	leaf, err := ca.Issue(LeafRequest{
-		CommonName:  "leaf",
-		ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
-	})
+	leaf, err := ca.Issue(
+		WithDuration(365*24*time.Hour),
+		WithCommonName("leaf"),
+		WithExtKeyUsage([]x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}),
+	)
 	if err != nil {
 		t.Fatalf("Issue: %v", err)
 	}
@@ -192,6 +202,12 @@ func TestLeafNotAfterClampedToCA(t *testing.T) {
 func TestOptionsValidation(t *testing.T) {
 	t.Parallel()
 
+	optFunc := func(o Options) OptionFunc {
+		return func(opts *Options) {
+			*opts = o
+		}
+	}
+
 	tests := map[string]Options{
 		"unsupported key type": {KeyType: "dsa"},
 		"weak rsa key":         {KeyType: KeyTypeRSA, RSABits: 512},
@@ -201,7 +217,7 @@ func TestOptionsValidation(t *testing.T) {
 	for name, opts := range tests {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			if _, err := NewAuthority(authorityOptions(opts)...); err == nil {
+			if _, err := NewAuthority(optFunc(opts)); err == nil {
 				t.Fatal("expected an error, got nil")
 			}
 		})
@@ -216,10 +232,12 @@ func TestIssueRequiresCommonNameAndKeyUsage(t *testing.T) {
 		t.Fatalf("NewAuthority: %v", err)
 	}
 
-	if _, err := ca.Issue(LeafRequest{ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}}); err == nil {
+	if _, err := ca.Issue(
+		WithExtKeyUsage([]x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth})); err == nil {
 		t.Error("expected error for missing common name")
 	}
-	if _, err := ca.Issue(LeafRequest{CommonName: "leaf"}); err == nil {
+	if _, err := ca.Issue(
+		WithCommonName("leaf")); err == nil {
 		t.Error("expected error for missing ext key usage")
 	}
 }
@@ -231,10 +249,10 @@ func TestLoadAuthorityRejectsNonCA(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewAuthority: %v", err)
 	}
-	leaf, err := ca.Issue(LeafRequest{
-		CommonName:  "leaf",
-		ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
-	})
+	leaf, err := ca.Issue(
+		WithCommonName("leaf"),
+		WithExtKeyUsage([]x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}),
+	)
 	if err != nil {
 		t.Fatalf("Issue: %v", err)
 	}
@@ -263,27 +281,4 @@ func parseCert(t *testing.T, pemBytes []byte) *x509.Certificate {
 		t.Fatalf("parsing certificate: %v", err)
 	}
 	return cert
-}
-
-func authorityOptions(o Options) []PKIOptions {
-	var opts []PKIOptions
-	if o.KeyType != "" {
-		opts = append(opts, WithKeyType(o.KeyType))
-	}
-	if o.RSABits != 0 {
-		opts = append(opts, WithRSABits(o.RSABits))
-	}
-	if o.CADuration != 0 {
-		opts = append(opts, WithCADuration(o.CADuration))
-	}
-	if o.Duration != 0 {
-		opts = append(opts, WithDuration(o.Duration))
-	}
-	if o.Organization != "" {
-		opts = append(opts, WithOrganization(o.Organization))
-	}
-	if o.CACommonName != "" {
-		opts = append(opts, WithCACommonName(o.CACommonName))
-	}
-	return opts
 }
