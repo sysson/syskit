@@ -1,7 +1,9 @@
 package pki
 
 import (
+	"crypto/x509"
 	"fmt"
+	"net"
 	"time"
 )
 
@@ -29,73 +31,90 @@ const (
 	backdate = time.Hour
 )
 
-// Options controls the contents of an Authority and the leaves it issues.
-// The zero value is usable and yields ECDSA P-256 keys with the default
-// validity periods; Organization and CACommonName are left blank if unset.
+// Options controls the contents of a Certificate request
+// and the resulting certificate.
 type Options struct {
 	KeyType KeyType
 	// RSABits is only consulted when KeyType is KeyTypeRSA.
 	RSABits int
 
-	// CADuration and Duration are the validity periods of the CA and of the
-	// leaf certificates respectively.
-	CADuration time.Duration
-	Duration   time.Duration
+	// CADuration is the validity period of the certificate.
+	Duration time.Duration
 
+	// Organization is the organization name to use in the certificate subject.
+	// CommonName is the common name to use in the certificate subject.
 	Organization string
-	CACommonName string
+	CommonName   string
+
+	// Leaf certificate options
+	ExtKeyUsage []x509.ExtKeyUsage
+	DNSNames    []string
+	IPAddresses []net.IP
 }
 
-type PKIOptions func(*Options)
+type OptionFunc func(*Options)
 
-func defaultOptions() Options {
-	return Options{
-		KeyType:      DefaultKeyType,
-		RSABits:      DefaultRSABits,
-		CADuration:   DefaultCADuration,
-		Duration:     DefaultDuration,
-		Organization: "",
-		CACommonName: "",
+func defaultOptions(opts ...OptionFunc) Options {
+	o := Options{
+		KeyType:  DefaultKeyType,
+		RSABits:  DefaultRSABits,
+		Duration: DefaultDuration,
 	}
+	for _, opt := range opts {
+		opt(&o)
+	}
+	return o
 }
 
-func WithKeyType(keyType KeyType) PKIOptions {
+func WithKeyType(keyType KeyType) OptionFunc {
 	return func(o *Options) {
 		o.KeyType = keyType
 	}
 }
 
-func WithRSABits(bits int) PKIOptions {
+func WithRSABits(bits int) OptionFunc {
 	return func(o *Options) {
 		o.RSABits = bits
 	}
 }
 
-func WithCADuration(d time.Duration) PKIOptions {
-	return func(o *Options) {
-		o.CADuration = d
-	}
-}
-
-func WithDuration(d time.Duration) PKIOptions {
+func WithDuration(d time.Duration) OptionFunc {
 	return func(o *Options) {
 		o.Duration = d
 	}
 }
 
-func WithOrganization(org string) PKIOptions {
+func WithOrganization(org string) OptionFunc {
 	return func(o *Options) {
 		o.Organization = org
 	}
 }
 
-func WithCACommonName(cn string) PKIOptions {
+func WithCommonName(cn string) OptionFunc {
 	return func(o *Options) {
-		o.CACommonName = cn
+		o.CommonName = cn
 	}
 }
 
-func (o *Options) Validate() error {
+func WithExtKeyUsage(eku []x509.ExtKeyUsage) OptionFunc {
+	return func(o *Options) {
+		o.ExtKeyUsage = eku
+	}
+}
+
+func WithDNSNames(dns []string) OptionFunc {
+	return func(o *Options) {
+		o.DNSNames = dns
+	}
+}
+
+func WithIPAddresses(ips []net.IP) OptionFunc {
+	return func(o *Options) {
+		o.IPAddresses = ips
+	}
+}
+
+func (o *Options) validate() error {
 	switch o.KeyType {
 	case KeyTypeECDSA, KeyTypeEd25519, KeyTypeRSA:
 	default:
@@ -105,8 +124,22 @@ func (o *Options) Validate() error {
 	if o.KeyType == KeyTypeRSA && o.RSABits < 2048 {
 		return fmt.Errorf("rsa key size %d is too small: minimum is 2048", o.RSABits)
 	}
-	if o.CADuration <= 0 || o.Duration <= 0 {
-		return fmt.Errorf("certificate durations must be positive")
+	if o.Duration <= 0 {
+		return fmt.Errorf("certificate duration must be positive")
+	}
+	return nil
+}
+
+func (o *Options) validateLeafRequest() error {
+	err := o.validate()
+	if err != nil {
+		return err
+	}
+	if o.CommonName == "" {
+		return fmt.Errorf("leaf certificate common name is required")
+	}
+	if len(o.ExtKeyUsage) == 0 {
+		return fmt.Errorf("leaf certificate %q needs at least one extended key usage", o.CommonName)
 	}
 	return nil
 }
