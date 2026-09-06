@@ -1,6 +1,7 @@
 package pki
 
 import (
+	"crypto/tls"
 	"crypto/x509"
 	"encoding/pem"
 	"errors"
@@ -53,10 +54,19 @@ func TestGenerateAndIssueVerifies(t *testing.T) {
 				t.Errorf("verifying leaf certificate: %v", err)
 			}
 
-			if _, err := tlsconfig.ServerTLSConfig(); err != nil {
+			if _, err := tlsconfig.ServerTLSConfig(
+				tlsconfig.WithKeyPair(leaf.Cert, leaf.Key),
+				tlsconfig.WithCA(ca.KeyPair().Cert),
+				tlsconfig.WithClientAuth(tls.RequireAndVerifyClientCert),
+				tlsconfig.WithNextProtos([]string{"h2"}),
+			); err != nil {
 				t.Errorf("ServerTLSConfig: %v", err)
 			}
-			if _, err := tlsconfig.ClientTLSConfig(); err != nil {
+			if _, err := tlsconfig.ClientTLSConfig(
+				tlsconfig.WithKeyPair(leaf.Cert, leaf.Key),
+				tlsconfig.WithCA(ca.KeyPair().Cert),
+				tlsconfig.WithNextProtos([]string{"h2"}),
+			); err != nil {
 				t.Errorf("ClientTLSConfig: %v", err)
 			}
 		})
