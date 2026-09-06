@@ -67,7 +67,7 @@ func (sf *jsonProgressFormatter) formatProgress(id, action string, progress *Str
 	return appendNewline(b)
 }
 
-// NewJSONProgressOutput returns a progress.Output that formats output
+// NewJSONProgressOutput returns a ProgressWriter that formats output
 // using JSON objects
 func NewJSONProgressOutput(out io.Writer, newLines bool) ProgressWriter {
 	return &progressOutput{sf: &jsonProgressFormatter{}, out: out, newLines: newLines}
