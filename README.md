@@ -129,6 +129,7 @@ Utilities for wrapping and modifying I/O streams, particularly useful for HTTP r
 - HTTP response interception and buffering (up to 64KB)
 - Response header and body modification
 - Support for connection hijacking
+- Wrapping writers with custom close functions or HTTP flushing
 
 **Example:**
 ```go
@@ -176,6 +177,45 @@ func loggingMiddleware(next http.Handler) http.Handler {
 	})
 }
 ```
+
+`NewWriteCloserWrapper` closes the supplied writer with a caller-provided
+cleanup function. `NewWriteFlusher` flushes an HTTP-capable writer after each
+write and can report its final flush state after closing.
+
+---
+
+### [`stream`](stream/) — Progress and Output Streams
+
+Formats progress, auxiliary data, and command output as newline-delimited JSON
+messages. The package also provides readers and writers that report transfer
+progress through a `ProgressWriter`.
+
+**Example:**
+```go
+package main
+
+import (
+	"os"
+
+	"github.com/sysson/syskit/stream"
+)
+
+func main() {
+	progress := stream.NewJSONProgressOutput(os.Stdout, true)
+	defer progress.Close()
+
+	stream.Message(progress, "upload", "starting")
+	stream.Update(progress, "upload", "sending")
+}
+```
+
+`NewProgressReader` reports bytes read and forwards updates to any
+`ProgressWriter`. `NewJSONProgressOutput` writes progress as JSON messages,
+while `NewStdoutWriter` and `NewStderrWriter` wrap command output as stream
+messages. `ChanOutput` forwards progress updates to a channel and can be
+closed safely even when the channel consumer is no longer receiving. It is
+useful when progress should be handled by another goroutine; `DiscardOutput`
+disables progress reporting without changing the caller’s control flow.
 
 
 ---
