@@ -1,7 +1,6 @@
 package iox
 
 import (
-	"errors"
 	"io"
 	"net/http"
 	"sync/atomic"
@@ -13,17 +12,15 @@ type WriteFlusher interface {
 	io.WriteCloser
 	http.Flusher
 
-	// Flushed reports whether the writer was flushed before it was closed. It
-	// returns an error while the writer is still open because another flush may
-	// occur before the method returns.
-	Flushed() (bool, error)
+	// HasWritten reports whether the writer has successfully written any data.
+	HasWritten() bool
 }
 
 type writeFlusher struct {
-	w           io.Writer
-	flusher     http.Flusher
-	flushedOnce atomic.Bool
-	closed      atomic.Bool
+	w       io.Writer
+	flusher http.Flusher
+	wrote   atomic.Bool
+	closed  atomic.Bool
 }
 
 func (wf *writeFlusher) Write(b []byte) (int, error) {
@@ -31,6 +28,7 @@ func (wf *writeFlusher) Write(b []byte) (int, error) {
 		return 0, io.EOF
 	}
 
+	wf.wrote.Store(true)
 	n, err := wf.w.Write(b)
 	wf.Flush()
 	return n, err
@@ -40,19 +38,14 @@ func (wf *writeFlusher) Flush() {
 	if wf.closed.Load() {
 		return
 	}
-
-	if !wf.flushedOnce.Load() {
-		wf.flushedOnce.Store(true)
-	}
 	wf.flusher.Flush()
 }
 
-func (wf *writeFlusher) Flushed() (bool, error) {
-	if wf.closed.Load() {
-		return wf.flushedOnce.Load(), nil
-	}
-	// If the writeFlusher is not closed, we cannot guarantee that it won't get flushed upon return.
-	return false, errors.New("writeFlusher is not closed yet")
+// HasWritten reports whether the writer has successfully written any data. It
+// can be called at any time, even after the writer is closed.
+// If using a http.ResponseWriter, it's no longer possible to modify the headers, when true.
+func (wf *writeFlusher) HasWritten() bool {
+	return wf.wrote.Load()
 }
 
 func (wf *writeFlusher) Close() error {
