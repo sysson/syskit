@@ -29,14 +29,8 @@ func TestWriteFlusherFlushesAfterWrite(t *testing.T) {
 	if got := underlying.flushes; got != 1 {
 		t.Fatalf("flush count = %d, want 1", got)
 	}
-	if written := writer.HasWritten(); !written {
-		t.Fatalf("HasWritten() = (%v), want (true) while open", written)
-	}
 	if err := writer.Close(); err != nil {
 		t.Fatalf("Close() error = %v", err)
-	}
-	if written := writer.HasWritten(); !written {
-		t.Fatalf("HasWritten() = (%v), want (true) after close", written)
 	}
 	if _, err := writer.Write([]byte("after close")); err != io.EOF {
 		t.Fatalf("Write() after Close() error = %v, want %v", err, io.EOF)

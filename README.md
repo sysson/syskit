@@ -180,7 +180,7 @@ func loggingMiddleware(next http.Handler) http.Handler {
 
 `NewWriteCloserWrapper` closes the supplied writer with a caller-provided
 cleanup function. `NewWriteFlusher` flushes an HTTP-capable writer after each
-write and can report its final flush state after closing.
+write. `NewResponseWrapper` can tell you the status code and number of bytes written in a response.
 
 ---
 
