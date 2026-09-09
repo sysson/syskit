@@ -5,16 +5,18 @@ on:
     branches:
       - main
 
+permissions:
+  contents: read
+  pull-requests: read
+
 jobs:
   Linter:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
         with:
-          ref: ${{ github.head_ref }}
+          fetch-depth: 0
 
       - name: Set up Go
         uses: actions/setup-go@v7
@@ -24,19 +26,17 @@ jobs:
       - name: Install dependencies
         run: go mod tidy
 
-      - name: Run go fmt
-        run: go fmt ./...
+      - name: Check go fmt
+        run: |
+          fmt_out=$(gofmt -l .)
+          if [ -n "$fmt_out" ]; then
+            echo "The following files are not formatted:"
+            echo "$fmt_out"
+            exit 1
+          fi
 
       - name: Run go vet
         run: go vet ./...
-
-      - name: Run go fix
-        run: go fix ./...
-
-      - name: Commit changes
-        uses: stefanzweifel/git-auto-commit-action@v7
-        with:
-          commit_message: "Auto-format code"
 
   GoLangCI:
     runs-on: ubuntu-latest
