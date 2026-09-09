@@ -1,0 +1,32 @@
+name: Release
+
+on:
+  push:
+    branches: ["main"]
+
+permissions:
+  id-token: write
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: 1.27
+
+      - name: Test
+        working-directory: ./src
+        run: go test -v ./...
+
+      - name: Go Semantic Release
+        id: semrel
+        uses: go-semantic-release/action@v1
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}

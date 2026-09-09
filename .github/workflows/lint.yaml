@@ -1,0 +1,74 @@
+name: Lint & Format
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  id-token: write
+  contents: write
+  pull-requests: write
+
+jobs:
+  Linter:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: 1.27
+      - name: Install dependencies
+        working-directory: ./src
+        run: go mod tidy
+      - name: Run go fmt
+        working-directory: ./src
+        run: go fmt ./...
+      - name: Run go vet
+        working-directory: ./src
+        run: go vet ./...
+      - name: Update pull request
+        uses: peter-evans/create-pull-request@v8.1.1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "chore: format code"
+          title: "[AUTO] Format code"
+          body: "This PR automatically formats the code."
+          branch: ${{ github.head_ref }}
+          base: ${{ github.base_ref }}
+          labels: |
+            automated pr
+  GoLangCI:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Setup Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: 1.27
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.13
+          working-directory: ./src
+  Test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: 1.27
+      - name: Test
+        working-directory: ./src
+        run: go test -v ./...

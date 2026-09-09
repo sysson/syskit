@@ -35,7 +35,6 @@ type Validator interface {
 //	}
 //
 //	mux := http.HandleFunc("/users", httpx.Validate[CreateUserRequest](createUser))
-//  
 func Validate[V Validator](handler func(http.ResponseWriter, *http.Request, V) error) HTTPErrorFunc {
 	return func(w http.ResponseWriter, r *http.Request) error {
 		var v V
