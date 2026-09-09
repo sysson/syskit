@@ -18,7 +18,7 @@ type responseWrapper struct {
 	w            http.ResponseWriter
 	statusCode   int
 	wroteHeader  atomic.Bool
-	bytesWritten int
+	bytesWritten atomic.Int64
 }
 
 // StatusCode returns the HTTP status code of the response. If WriteHeader has
@@ -39,7 +39,7 @@ func (rw *responseWrapper) Write(b []byte) (int, error) {
 		rw.WriteHeader(http.StatusOK)
 	}
 	n, err := rw.w.Write(b)
-	rw.bytesWritten += n
+	rw.bytesWritten.Add(int64(n))
 	return n, err
 }
 
@@ -56,7 +56,7 @@ func (rw *responseWrapper) WriteHeader(statusCode int) {
 
 // BytesWritten returns the number of bytes written to the response.
 func (rw *responseWrapper) BytesWritten() int {
-	return rw.bytesWritten
+	return int(rw.bytesWritten.Load())
 }
 
 // NewResponseWrapper wraps an http.ResponseWriter and returns a ResponseWrapper
