@@ -60,9 +60,7 @@ func ChanOutput(progressChan chan<- Progress) ProgressWriter {
 		out:  progressChan,
 		stop: make(chan struct{}),
 	}
-	pw.wg.Add(1)
-	go func() {
-		defer pw.wg.Done()
+	pw.wg.Go(func() {
 		for {
 			select {
 			case <-pw.stop:
@@ -75,7 +73,7 @@ func ChanOutput(progressChan chan<- Progress) ProgressWriter {
 				}
 			}
 		}
-	}()
+	})
 
 	return pw
 }
