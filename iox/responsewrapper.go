@@ -1,6 +1,8 @@
 package iox
 
 import (
+	"bufio"
+	"net"
 	"net/http"
 	"sync/atomic"
 )
@@ -19,6 +21,22 @@ type responseWrapper struct {
 	statusCode   int
 	wroteHeader  atomic.Bool
 	bytesWritten atomic.Int64
+}
+
+type responseWrapperFlusher struct {
+	*responseWrapper
+	flusher http.Flusher
+}
+
+type responseWrapperHijacker struct {
+	*responseWrapper
+	hijacker http.Hijacker
+}
+
+type responseWrapperFlusherHijacker struct {
+	*responseWrapper
+	flusher  http.Flusher
+	hijacker http.Hijacker
 }
 
 // StatusCode returns the HTTP status code of the response. If WriteHeader has
@@ -59,8 +77,43 @@ func (rw *responseWrapper) BytesWritten() int {
 	return int(rw.bytesWritten.Load())
 }
 
+// Flush sends any buffered response data to the client if the underlying
+// ResponseWriter supports flushing.
+func (rw *responseWrapperFlusher) Flush() {
+	rw.flusher.Flush()
+}
+
+// Hijack lets the caller take over the connection if the underlying
+// ResponseWriter supports hijacking.
+func (rw *responseWrapperHijacker) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	return rw.hijacker.Hijack()
+}
+
+// Flush sends any buffered response data to the client.
+func (rw *responseWrapperFlusherHijacker) Flush() {
+	rw.flusher.Flush()
+}
+
+// Hijack lets the caller take over the connection.
+func (rw *responseWrapperFlusherHijacker) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	return rw.hijacker.Hijack()
+}
+
 // NewResponseWrapper wraps an http.ResponseWriter and returns a ResponseWrapper
 // that tracks the status code and number of bytes written.
 func NewResponseWrapper(w http.ResponseWriter) ResponseWrapper {
-	return &responseWrapper{w: w}
+	rw := &responseWrapper{w: w}
+	flusher, canFlush := w.(http.Flusher)
+	hijacker, canHijack := w.(http.Hijacker)
+
+	switch {
+	case canFlush && canHijack:
+		return &responseWrapperFlusherHijacker{responseWrapper: rw, flusher: flusher, hijacker: hijacker}
+	case canFlush:
+		return &responseWrapperFlusher{responseWrapper: rw, flusher: flusher}
+	case canHijack:
+		return &responseWrapperHijacker{responseWrapper: rw, hijacker: hijacker}
+	default:
+		return rw
+	}
 }
