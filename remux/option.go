@@ -129,7 +129,7 @@ func PathPrefixRegexp(pathPrefixRe *regexp.Regexp) PatternMatcher {
 
 // PathPrefixReString returns a PatternMatcher that matches requests with a URL path prefix matching the given string pattern. It removes the ending $ if present.
 func PathPrefixReString(pattern string) PatternMatcher {
-	re := regexp.MustCompile(strings.TrimSuffix(Pattern(pattern),"$"))
+	re := regexp.MustCompile(strings.TrimSuffix(Pattern(pattern), "$"))
 	return CustomMatcher(pathPrefixRegexp{re: re, names: regexpNames(re)})
 }
 
