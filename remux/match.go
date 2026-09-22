@@ -4,6 +4,7 @@ import (
 	"net"
 	"net/http"
 	"regexp"
+	"strings"
 )
 
 const (
@@ -29,8 +30,8 @@ type MatchContext struct {
 }
 
 func (m *MatchContext) Reset() {
-	m.Names = []string{}
-	m.Values = []string{}
+	m.Names = m.Names[:0]
+	m.Values = m.Values[:0]
 }
 
 // header represents a matcher for HTTP headers with a specific key-value pair.
@@ -145,7 +146,7 @@ type pathPrefix struct {
 }
 
 func (p pathPrefix) Match(req *http.Request, ctx *MatchContext) bool {
-	return len(req.URL.Path) >= len(p.p) && req.URL.Path[:len(p.p)] == p.p
+	return strings.HasPrefix(req.URL.String(), p.p)
 }
 
 func (p pathPrefix) Priority() int {

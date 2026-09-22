@@ -173,3 +173,26 @@ func TestDetectMatchType(t *testing.T) {
 		}
 	}
 }
+
+// test simple regexp converts back down to a literal
+func TestSimpleRegexpToLiteral(t *testing.T) {
+	type testCase struct {
+		pattern string
+		prefix  bool
+		output  string
+	}
+
+	tests := []testCase{
+		{pattern: "^/images/create$", prefix: false, output: "/images/create"},
+		{pattern: "^/images/create", prefix: true, output: "/images/create"},
+	}
+
+	for _, tc := range tests {
+		patternStr := buildRegexpFromPatternParts(parsePatternTemplate(cleanTemplate(tc.pattern)), patternPath, tc.prefix)
+		_, pattern, _ := detectMatchType(patternStr)
+
+		if pattern != tc.output {
+			t.Errorf("Pattern %q expected literal %q, got %q", tc.pattern, tc.output, pattern)
+		}
+	}
+}

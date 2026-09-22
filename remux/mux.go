@@ -24,6 +24,7 @@ type handler struct {
 	matchers  []Matcher
 	matchPrio int
 	setPrio   int
+	index     int
 	handler   http.Handler
 	method    []string
 	mw        []func(http.Handler) http.Handler
@@ -74,6 +75,11 @@ type ReMux struct {
 // sortKeys sorts the handlers in the ReMux based on their priority in descending order.
 func (m *ReMux) sortKeys() {
 	sort.Slice(m.handlers, func(i, j int) bool {
+		// If priorities are equal, sort by index to maintain insertion order.
+		if m.handlers[i].priority() == m.handlers[j].priority() {
+			return m.handlers[i].index < m.handlers[j].index
+		}
+		// Otherwise, sort by priority in descending order.
 		return m.handlers[i].priority() > m.handlers[j].priority()
 	})
 }
@@ -95,6 +101,7 @@ func (m *ReMux) Handle(h http.Handler, opts ...HandlerOptions) {
 		mw:       []func(http.Handler) http.Handler{},
 		setPrio:  0,
 		handler:  h,
+		index:    len(m.handlers),
 	}
 	for _, opt := range opts {
 		opt(hh)
@@ -198,22 +205,37 @@ func addAllowedMethodsHeader(w http.ResponseWriter, allowedMethods []string) {
 // It returns a boolean indicating if a route was found but the method was not allowed,
 // the matched handler, and the captured named groups from the regular expression match.
 func (m *ReMux) findMatch(r *http.Request) (*handler, *MatchContext, []string) {
-	var allowedMethods []string
+	var allowedMethods = make(map[string]struct{})
 	var matches MatchContext
 	for _, h := range m.handlers {
 		matches.Reset()
 		if h.match(r, &matches) {
+			// If the handler has no specific methods, it matches all methods.
+			if len(h.method) == 0 {
+				return h, &matches, mapKeys(allowedMethods)
+			}
+			// Check if the method is allowed for this handler.
 			ok, allowed := h.methodAllowed(r.Method)
 			if ok {
-				return h, &matches, allowedMethods
+				return h, &matches, mapKeys(allowedMethods)
 			}
-			allowedMethods = append(allowedMethods, allowed...)
-			if len(h.method) == 0 {
-				return h, &matches, allowedMethods
+			// If the method is not allowed, add it to the allowed methods set.
+			for _, method := range allowed {
+				allowedMethods[method] = struct{}{}
 			}
 		}
 	}
-	return nil, nil, allowedMethods
+	allowed := mapKeys(allowedMethods)
+	sort.Strings(allowed)
+	return nil, nil, allowed
+}
+
+func mapKeys(m map[string]struct{}) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	return keys
 }
 
 // wrapHandler applies the given middleware to the handler in the correct order.

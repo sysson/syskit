@@ -14,7 +14,7 @@ func TestPathValue(t *testing.T) {
 	m.HandleFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(r.PathValue("id")))
 	},
-		PathRegexp(regexp.MustCompile("/images/{id:*}/create")),
+		PathRegexp(regexp.MustCompile("^/images/(?P<id>.*)/create$")),
 	)
 
 	req := "/images/123/create"
@@ -342,5 +342,95 @@ func TestQuery(t *testing.T) {
 	m.ServeHTTP(resp, reqObj)
 	if resp.Body.String() != "no query" {
 		t.Errorf("Expected response body to be 'no query', got %q", resp.Body.String())
+	}
+}
+
+// test literal paths
+func TestLiteralPaths(t *testing.T) {
+	m := New()
+	m.Get("/home", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte("home"))
+	}))
+	m.Get("/about", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte("about"))
+	}))
+	m.Get("/foo.bar", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte("foo bar"))
+	}))
+
+	req := "/home"
+	resp := httptest.NewRecorder()
+	reqObj, _ := http.NewRequest("GET", req, nil)
+	m.ServeHTTP(resp, reqObj)
+	if resp.Body.String() != "home" {
+		t.Errorf("Expected response body to be 'home', got %q", resp.Body.String())
+	}
+
+	req = "/about"
+	resp = httptest.NewRecorder()
+	reqObj, _ = http.NewRequest("GET", req, nil)
+	m.ServeHTTP(resp, reqObj)
+	if resp.Body.String() != "about" {
+		t.Errorf("Expected response body to be 'about', got %q", resp.Body.String())
+	}
+
+	req = "/foo.bar"
+	resp = httptest.NewRecorder()
+	reqObj, _ = http.NewRequest("GET", req, nil)
+	m.ServeHTTP(resp, reqObj)
+	if resp.Body.String() != "foo bar" {
+		t.Errorf("Expected response body to be 'foo bar', got %q", resp.Body.String())
+	}
+}
+
+// test sub router
+func TestSubRouter(t *testing.T) {
+	m := New()
+	sub := m.Sub("/api")
+	sub.Get("/users", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte("users"))
+	}))
+
+	req := "/api/users"
+	resp := httptest.NewRecorder()
+	reqObj, _ := http.NewRequest("GET", req, nil)
+	m.ServeHTTP(resp, reqObj)
+	if resp.Body.String() != "users" {
+		t.Errorf("Expected response body to be 'users', got %q", resp.Body.String())
+	}
+}
+
+// conflict tests
+
+func TestConflictPaths(t *testing.T) {
+	m := New()
+	m.Get("/users/me", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte("first"))
+	}))
+	m.Get("/users/{id}", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte("second"))
+	}))
+
+	req := "/users/me"
+	resp := httptest.NewRecorder()
+	reqObj, _ := http.NewRequest("GET", req, nil)
+	m.ServeHTTP(resp, reqObj)
+	if resp.Body.String() != "first" {
+		t.Errorf("Expected response body to be 'first', got %q", resp.Body.String())
+	}
+
+	m.Get("/assets/{id}", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte("first"))
+	}))
+	m.Get("/assets/js/{id}", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte("second"))
+	}))
+
+	req = "/assets/js/123"
+	resp = httptest.NewRecorder()
+	reqObj, _ = http.NewRequest("GET", req, nil)
+	m.ServeHTTP(resp, reqObj)
+	if resp.Body.String() != "second" {
+		t.Errorf("Expected response body to be 'second', got %q", resp.Body.String())
 	}
 }
