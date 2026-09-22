@@ -10,7 +10,11 @@ type HandlerOptions func(*handler)
 
 // Header returns a HandlerOptions that matches requests with the specified HTTP header key and value.
 func Header(key, value string) HandlerOptions {
-	return CustomMatcher(header{key: key, value: value})
+	str, re := mustLiteralOrRegexp(value, patternAny, false)
+	if re != nil {
+		return HeaderRegexp(key, re)
+	}
+	return CustomMatcher(header{key: key, value: str})
 }
 
 // HeaderRegexp returns a HandlerOptions that matches requests with the specified HTTP header key and a value matching the given regular expression.
@@ -20,7 +24,11 @@ func HeaderRegexp(key string, valueRe *regexp.Regexp) HandlerOptions {
 
 // HostName returns a HandlerOptions that matches requests with the specified hostname.
 func HostName(h string) HandlerOptions {
-	return CustomMatcher(hostname{h: h})
+	str, re := mustLiteralOrRegexp(h, patternAny, false)
+	if re != nil {
+		return HostNameRegexp(re)
+	}
+	return CustomMatcher(hostname{h: str})
 }
 
 // HostNameRegexp returns a HandlerOptions that matches requests with a hostname matching the given regular expression.
@@ -88,7 +96,11 @@ func Trace() HandlerOptions {
 
 // Path returns a HandlerOptions that matches requests with the specified URL path.
 func Path(p string) HandlerOptions {
-	return CustomMatcher(path{p: p})
+	str, re := mustLiteralOrRegexp(p, patternAny, false)
+	if re != nil {
+		return PathRegexp(re)
+	}
+	return CustomMatcher(path{p: str})
 }
 
 // PathRegexp returns a HandlerOptions that matches requests with a URL path matching the given regular expression.
@@ -98,12 +110,20 @@ func PathRegexp(pathRe *regexp.Regexp) HandlerOptions {
 
 // PathPrefix returns a HandlerOptions that matches requests with the specified URL path prefix.
 func PathPrefix(p string) HandlerOptions {
-	return CustomMatcher(pathPrefix{p: p})
+	str, re := mustLiteralOrRegexp(p, patternAny, true)
+	if re != nil {
+		return PathRegexp(re)
+	}
+	return CustomMatcher(pathPrefix{p: str})
 }
 
 // Query returns a HandlerOptions that matches requests with the specified query parameter key and value.
 func Query(key, value string) HandlerOptions {
-	return CustomMatcher(query{key: key, value: value})
+	str, re := mustLiteralOrRegexp(value, patternAny, false)
+	if re != nil {
+		return QueryRegexp(key, re)
+	}
+	return CustomMatcher(query{key: key, value: str})
 }
 
 // QueryRegexp returns a HandlerOptions that matches requests with the specified query parameter key and a value matching the given regular expression.

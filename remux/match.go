@@ -22,6 +22,7 @@ const (
 type Matcher interface {
 	Match(*http.Request, *MatchContext) bool
 	Priority() int
+	String() string
 }
 
 type MatchContext struct {
@@ -48,6 +49,10 @@ func (h header) Priority() int {
 	return len(h.key) + len(h.value) + PriorityHeader
 }
 
+func (h header) String() string {
+	return h.key + ": " + h.value
+}
+
 // headerRegexp represents a matcher for HTTP headers using a regular expression with named capture groups.
 type headerRegexp struct {
 	key   string
@@ -65,6 +70,10 @@ func (h headerRegexp) Match(req *http.Request, ctx *MatchContext) bool {
 
 func (h headerRegexp) Priority() int {
 	return len(h.key) + len(h.re.String()) + PriorityHeaderRegexp
+}
+
+func (h headerRegexp) String() string {
+	return h.key + ": " + h.re.String()
 }
 
 // hostname represents a matcher for the request's hostname.
@@ -92,6 +101,10 @@ func (h hostname) Priority() int {
 	return len(h.h) + PriorityHostname
 }
 
+func (h hostname) String() string {
+	return h.h
+}
+
 // hostNameRegexp represents a matcher for the request's hostname using a regular expression with named capture groups.
 type hostNameRegexp struct {
 	re    *regexp.Regexp
@@ -110,6 +123,10 @@ func (h hostNameRegexp) Priority() int {
 	return len(h.re.String()) + PriorityHostNameRegexp
 }
 
+func (h hostNameRegexp) String() string {
+	return h.re.String()
+}
+
 // path represents a matcher for the request's URL path.
 type path struct {
 	p string
@@ -120,6 +137,10 @@ func (p path) Match(req *http.Request, ctx *MatchContext) bool {
 }
 func (p path) Priority() int {
 	return len(p.p) + PriorityPath
+}
+
+func (p path) String() string {
+	return p.p
 }
 
 // pathRegexp represents a matcher for the request's URL path using a regular expression with named capture groups.
@@ -140,6 +161,10 @@ func (p pathRegexp) Priority() int {
 	return len(p.re.String()) + PriorityPathRegexp
 }
 
+func (p pathRegexp) String() string {
+	return p.re.String()
+}
+
 // pathPrefix represents a matcher for the request's URL path prefix.
 type pathPrefix struct {
 	p string
@@ -151,6 +176,10 @@ func (p pathPrefix) Match(req *http.Request, ctx *MatchContext) bool {
 
 func (p pathPrefix) Priority() int {
 	return len(p.p) + PriorityPathPrefix
+}
+
+func (p pathPrefix) String() string {
+	return p.p
 }
 
 // query represents a matcher for the request's URL query parameters with a specific key-value pair.
@@ -165,6 +194,10 @@ func (q query) Match(req *http.Request, ctx *MatchContext) bool {
 
 func (q query) Priority() int {
 	return len(q.key) + len(q.value) + PriorityQuery
+}
+
+func (q query) String() string {
+	return q.key + "=" + q.value
 }
 
 // queryRegexp represents a matcher for the request's URL query parameters using a regular expression with named capture groups.
@@ -184,6 +217,10 @@ func (q queryRegexp) Match(req *http.Request, ctx *MatchContext) bool {
 
 func (q queryRegexp) Priority() int {
 	return len(q.key) + len(q.re.String()) + PriorityQueryRegexp
+}
+
+func (q queryRegexp) String() string {
+	return q.key + "=" + q.re.String()
 }
 
 // matchRegexpNames matches the given string against the regular expression and returns the result along with the named capture groups.
@@ -222,6 +259,14 @@ func (o orMatcher) Priority() int {
 	return p
 }
 
+func (o orMatcher) String() string {
+	strs := make([]string, len(o.m))
+	for i, m := range o.m {
+		strs[i] = m.String()
+	}
+	return "OR(" + strings.Join(strs, ", ") + ")"
+}
+
 // andMatcher represents a logical AND combination of multiple matchers.
 type andMatcher struct {
 	m []Matcher
@@ -234,6 +279,13 @@ func (a andMatcher) Match(req *http.Request, ctx *MatchContext) bool {
 		}
 	}
 	return true
+}
+func (a andMatcher) String() string {
+	strs := make([]string, len(a.m))
+	for i, m := range a.m {
+		strs[i] = m.String()
+	}
+	return "AND(" + strings.Join(strs, ", ") + ")"
 }
 func (a andMatcher) Priority() int {
 	p := 0
@@ -254,4 +306,7 @@ func (n notMatcher) Match(req *http.Request, ctx *MatchContext) bool {
 
 func (n notMatcher) Priority() int {
 	return n.m.Priority()
+}
+func (n notMatcher) String() string {
+	return "NOT(" + n.m.String() + ")"
 }

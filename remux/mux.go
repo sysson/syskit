@@ -262,15 +262,8 @@ func methodNotAllowedHandler() http.HandlerFunc {
 
 // handle is a helper method that sets up the route with the specified HTTP methods and path pattern.
 func (m *ReMux) handle(method []string, path string, handler http.Handler, opts ...HandlerOptions) {
-	str, re := mustStrToPattern(path, patternPath, false)
-	if re == nil {
-		opts = append(opts, Path(str), Methods(method...))
-		m.Handle(handler, opts...)
-	} else {
-		opts = append(opts, PathRegexp(re), Methods(method...))
-		m.Handle(handler, opts...)
-	}
-
+	opts = append(opts, Path(path), Methods(method...))
+	m.Handle(handler, opts...)
 }
 
 // Get is a helper method that sets up a route for the GET HTTP method.
@@ -280,12 +273,7 @@ func (m *ReMux) Get(path string, handler http.Handler, opts ...HandlerOptions) {
 
 // Prefix is a helper method that sets up a route for any HTTP method with the specified path prefix.
 func (m *ReMux) Prefix(path string, handler http.Handler, opts ...HandlerOptions) {
-	str, re := mustStrToPattern(path, patternPath, true)
-	if re == nil {
-		opts = append(opts, PathPrefix(str))
-	} else {
-		opts = append(opts, PathRegexp(re))
-	}
+	opts = append(opts, PathPrefix(path))
 	m.Handle(handler, opts...)
 }
 
@@ -331,31 +319,50 @@ func (m *ReMux) Trace(path string, handler http.Handler, opts ...HandlerOptions)
 
 // Header is a helper method that sets up a route for the HEADER HTTP method.
 func (m *ReMux) Header(k, v string, handler http.Handler, opts ...HandlerOptions) {
-	str, re := mustStrToPattern(v, patternAny, false)
-	if re == nil {
-		opts = append(opts, Header(k, str))
-	} else {
-		opts = append(opts, HeaderRegexp(k, re))
-	}
+	opts = append(opts, Header(k, v))
 	m.Handle(handler, opts...)
 }
 
 func (m *ReMux) Query(k, v string, handler http.Handler, opts ...HandlerOptions) {
-	str, re := mustStrToPattern(v, patternAny, false)
-	if re == nil {
-		opts = append(opts, Query(k, str))
-	} else {
-		opts = append(opts, QueryRegexp(k, re))
-	}
+	opts = append(opts, Query(k, v))
 	m.Handle(handler, opts...)
 }
 
 func (m *ReMux) HostName(v string, handler http.Handler, opts ...HandlerOptions) {
-	str, re := mustStrToPattern(v, patternAny, false)
-	if re == nil {
-		opts = append(opts, HostName(str))
-	} else {
-		opts = append(opts, HostNameRegexp(re))
-	}
+	opts = append(opts, HostName(v))
 	m.Handle(handler, opts...)
+}
+
+// Handler returns the http.Handler that matches the given request.
+// the request is not modified by this method.
+func (m *ReMux) Handler(r *http.Request) http.Handler {
+	h, _, _ := m.findMatch(r)
+	return h.handler
+}
+
+type HandlerInfo struct {
+	Priority int
+	Index    int
+	Handler  http.Handler
+	Matchers []string
+	Methods  []string
+}
+
+func (m *ReMux) Debug() []HandlerInfo {
+	infos := []HandlerInfo{}
+	for _, h := range m.handlers {
+		var matchStr []string
+		for _, m := range h.matchers {
+			matchStr = append(matchStr, m.String())
+		}
+		methods := append([]string{}, h.method...)
+		infos = append(infos, HandlerInfo{
+			Priority: h.priority(),
+			Index:    h.index,
+			Handler:  h.handler,
+			Matchers: matchStr,
+			Methods:  methods,
+		})
+	}
+	return infos
 }

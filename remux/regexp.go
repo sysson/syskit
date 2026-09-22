@@ -197,7 +197,7 @@ func isPrefix(re *syntax.Regexp) (string, bool) {
 	return "", false
 }
 
-func strToPattern(in string, pt patternType, prefix bool) (string, *regexp.Regexp, error) {
+func literalOrRegexp(in string, pt patternType, prefix bool) (string, *regexp.Regexp, error) {
 
 	parts := parsePatternTemplate(cleanTemplate(in))
 	str := buildRegexpFromPatternParts(parts, pt, prefix)
@@ -223,8 +223,8 @@ func strToPattern(in string, pt patternType, prefix bool) (string, *regexp.Regex
 	return "", nil, nil
 }
 
-func mustStrToPattern(in string, pt patternType, prefix bool) (string, *regexp.Regexp) {
-	str, reg, err := strToPattern(in, pt, prefix)
+func mustLiteralOrRegexp(in string, pt patternType, prefix bool) (string, *regexp.Regexp) {
+	str, reg, err := literalOrRegexp(in, pt, prefix)
 	if err != nil {
 		panic(err)
 	}

@@ -285,6 +285,92 @@ func main() {
 
 ---
 
+### [`remux`](remux/) — a priority based mux, with regexp support
+
+remux is a lightweight HTTP router and request multiplexer for Go.
+ 
+It provides method-aware routing, middleware support, subrouters, and advanced request matching based on path, hostname, headers, and query parameters.
+
+## Features
+ 
+- HTTP method routing (GET, POST, PUT, DELETE, etc.)
+- Regexp Support, with parameters being set as request.PathValues
+- Middleware support
+- Subrouters
+- Prefix-based routing
+- Hostname matching
+- Header matching
+- Query parameter matching
+- Custom request matchers
+- Custom 404 and 405 handlers
+
+**Example:**
+```go
+package main
+
+import (
+    "fmt"
+    "net/http"
+
+    "github.com/sysson/syskit/remux"
+)
+
+func main() {
+    r := remux.New()
+	// helpers for common use case with regexp support
+	r.Get("/users", listUsers)
+	r.Post("/users", createUser)
+	r.Put("/users/{id}", updateUser)
+	r.Delete("/users/{id}", deleteUser)
+	//middleware for mux and/or each handler
+	r.Use(loggingMiddleware)
+	//quick sub routing with strip prefix
+	api := r.Sub("/api")
+	api.Get("/users", listUsers)
+	api.Get("/projects", listProjects)
+	//headers/hostname/query support
+	//quick access on remux
+	r.Header("X-Version", "v2", usersV2)
+	//or more options using remux.Handle
+	r.Handle(listimages,
+		remux.Path("/images"),
+		remux.Get(),
+		remux.Priority(1000),
+		)
+	// regexp based strings are parsed and any named arguments are stored as pathvalues
+    r.HandleFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(r.PathValue(r.PathValue)))
+	},
+		remux.Path("/images/{id}/create"),
+	)
+    http.ListenAndServe(":8080", r)
+}
+```
+## Route resolution
+
+Routes are evaluated according to their configured priority in decending order and matching rules.
+Priority is based on the type and number of matchers, but can be manually set.
+If two handlers have the same priority, they are evaluated in insertion order
+```go
+const (
+	PriorityQueryRegexp = iota * 20
+	PriorityQuery
+	PriorityPathRegexp
+	PriorityPathPrefix
+	PriorityPath
+	PriorityHeaderRegexp
+	PriorityHeader
+	PriorityHostNameRegexp
+	PriorityHostname
+)
+```
+Regexp can be entered for values, and is converted to literal strings where possible
+```go
+// use Debug to see a remux's list of handlers, its matchers and info
+remux.Debug()
+```
+---
+
 ## Installation
 
 ```bash

@@ -14,7 +14,7 @@ func TestPathValue(t *testing.T) {
 	m.HandleFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(r.PathValue("id")))
 	},
-		PathRegexp(regexp.MustCompile("^/images/(?P<id>.*)/create$")),
+		Path("/images/{id}/create"),
 	)
 
 	req := "/images/123/create"
@@ -432,5 +432,39 @@ func TestConflictPaths(t *testing.T) {
 	m.ServeHTTP(resp, reqObj)
 	if resp.Body.String() != "second" {
 		t.Errorf("Expected response body to be 'second', got %q", resp.Body.String())
+	}
+}
+
+// test check debug output
+func TestDebugOutput(t *testing.T) {
+	m := New()
+	m.Get("/users/{id}", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte("user"))
+	}))
+	debugInfo := m.Debug()
+	if len(debugInfo) != 1 {
+		t.Errorf("Expected 1 handler in debug output, got %d", len(debugInfo))
+	}
+	if debugInfo[0].Methods[0] != "GET" {
+		t.Errorf("Expected method to be 'GET', got %q", debugInfo[0].Methods[0])
+	}
+	if debugInfo[0].Matchers[0] != "^/users/(?P<id>.*)$" {
+		t.Errorf("Expected matcher to be '^/users/(?P<id>.*)$', got %q", debugInfo[0].Matchers[0])
+	}
+}
+
+// test find handler from request
+func TestHandlerFromRequest(t *testing.T) {
+	m := New()
+	m.Get("/users/{id}", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte("user"))
+	}))
+	req := "/users/123"
+	reqObj, _ := http.NewRequest("GET", req, nil)
+	handler := m.Handler(reqObj)
+	resp := httptest.NewRecorder()
+	handler.ServeHTTP(resp, reqObj)
+	if resp.Body.String() != "user" {
+		t.Errorf("Expected response body to be 'user', got %q", resp.Body.String())
 	}
 }
