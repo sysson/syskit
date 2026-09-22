@@ -1,18 +1,17 @@
 package remux
 
 import (
+	"net"
 	"net/http"
 	"regexp"
-	"strings"
 )
 
 const (
 	PriorityQueryRegexp = iota * 20
 	PriorityQuery
 	PriorityPathRegexp
-	PriorityPath
-	PriorityPathPrefixRegexp
 	PriorityPathPrefix
+	PriorityPath
 	PriorityHeaderRegexp
 	PriorityHeader
 	PriorityHostNameRegexp
@@ -72,8 +71,20 @@ type hostname struct {
 	h string
 }
 
+func getHostname(req *http.Request) string {
+	if req.URL.Hostname() != "" {
+		return req.URL.Hostname()
+	}
+	reqHost := req.Host
+	host, _, err := net.SplitHostPort(reqHost)
+	if err != nil {
+		return reqHost
+	}
+	return host
+}
+
 func (h hostname) Match(req *http.Request, ctx *MatchContext) bool {
-	return req.URL.Hostname() == h.h
+	return getHostname(req) == h.h
 }
 
 func (h hostname) Priority() int {
@@ -87,7 +98,7 @@ type hostNameRegexp struct {
 }
 
 func (h hostNameRegexp) Match(req *http.Request, ctx *MatchContext) bool {
-	ok, values := matchRegexpNames(h.re, req.URL.Hostname())
+	ok, values := matchRegexpNames(h.re, getHostname(req))
 	if ok {
 		addMatchesToContext(ctx, h.names, values)
 	}
@@ -139,24 +150,6 @@ func (p pathPrefix) Match(req *http.Request, ctx *MatchContext) bool {
 
 func (p pathPrefix) Priority() int {
 	return len(p.p) + PriorityPathPrefix
-}
-
-// pathPrefixRegexp represents a matcher for the request's URL path prefix using a regular expression with named capture groups.
-type pathPrefixRegexp struct {
-	re    *regexp.Regexp
-	names []string
-}
-
-func (p pathPrefixRegexp) Match(req *http.Request, ctx *MatchContext) bool {
-	ok, values := matchRegexpNames(p.re, req.URL.Path)
-	if ok {
-		addMatchesToContext(ctx, p.names, values)
-	}
-	return ok
-}
-
-func (p pathPrefixRegexp) Priority() int {
-	return len(p.re.String()) + PriorityPathPrefixRegexp
 }
 
 // query represents a matcher for the request's URL query parameters with a specific key-value pair.
@@ -260,47 +253,4 @@ func (n notMatcher) Match(req *http.Request, ctx *MatchContext) bool {
 
 func (n notMatcher) Priority() int {
 	return n.m.Priority()
-}
-
-// Pattern converts a string with braced named path values into a valid regexp string with named capture groups.
-// Example: /v{version:[0-9.]+}/images/{id:*}/create becomes a regexp that matches the path and captures "version" and "id". Where id can contain multiple path segments.
-func Pattern(str string) string {
-	var result strings.Builder
-	result.WriteString("^")
-	for i := 0; i < len(str); i++ {
-		if str[i] != '{' {
-			result.WriteByte(str[i])
-			continue
-		}
-		j := i + 1
-		indent := 0
-		for j < len(str) && (str[j] != '}' || indent > 0) {
-			switch str[j] {
-			case '{':
-				indent++
-			case '}':
-				indent--
-			}
-			j++
-		}
-		if j < len(str) {
-			content := str[i+1 : j]
-			parts := strings.SplitN(content, ":", 2)
-			if len(parts) == 2 {
-				name := parts[0]
-				pattern := parts[1]
-				if pattern == "*" {
-					pattern = ".*"
-				}
-				result.WriteString("(?P<" + name + ">" + pattern + ")")
-			} else {
-				result.WriteString("{" + content + "}")
-			}
-			i = j
-		} else {
-			result.WriteByte(str[i])
-		}
-	}
-	result.WriteString("$")
-	return result.String()
 }

@@ -1,19 +1,20 @@
 package remux
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"testing"
 )
 
 // test path value extraction from the request URL
 func TestPathValue(t *testing.T) {
 	m := New()
-	m.Handle(
-		PathReString("/images/{id:*}/create"),
-		HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			_, _ = w.Write([]byte(r.PathValue("id")))
-		}),
+	m.HandleFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(r.PathValue("id")))
+	},
+		PathRegexp(regexp.MustCompile("/images/{id:*}/create")),
 	)
 
 	req := "/images/123/create"
@@ -42,12 +43,10 @@ func TestWrappingMiddleware(t *testing.T) {
 			h.ServeHTTP(w, r)
 		})
 	})
-	m.Handle(
+	m.HandleFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte("ok"))
+	},
 		PathPrefix("/test"),
-		HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			_, _ = w.Write([]byte("ok"))
-		}),
-
 		Use(func(next http.Handler) http.Handler {
 			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				s := w.Header().Get("X-Test")
@@ -79,17 +78,15 @@ func TestWrappingMiddleware(t *testing.T) {
 // test priority on longer matches
 func TestLongerMatchPriority(t *testing.T) {
 	m := New()
-	m.Handle(
+	m.HandleFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte("short"))
+	},
 		PathPrefix("/test"),
-		HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			_, _ = w.Write([]byte("short"))
-		}),
 	)
-	m.Handle(
+	m.HandleFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte("long"))
+	},
 		PathPrefix("/test/long"),
-		HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			_, _ = w.Write([]byte("long"))
-		}),
 	)
 
 	req := "/test/long"
@@ -105,11 +102,10 @@ func TestLongerMatchPriority(t *testing.T) {
 func TestStrippedPrefixOnSubMux(t *testing.T) {
 	m := New()
 	sub := m.Sub("/sub")
-	sub.Handle(
+	sub.HandleFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(r.URL.Path))
+	},
 		PathPrefix("/testing"),
-		HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			_, _ = w.Write([]byte(r.URL.Path))
-		}),
 	)
 
 	req := "/sub/testing"
@@ -124,13 +120,12 @@ func TestStrippedPrefixOnSubMux(t *testing.T) {
 // test not found and method not allowed scenarios
 func TestNotFoundAndMethodNotAllowed(t *testing.T) {
 	m := New()
-	m.Handle(
+	m.HandleFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte("ok"))
+	},
 		Get(),
 		Post(),
 		PathPrefix("/test"),
-		HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			_, _ = w.Write([]byte("ok"))
-		}),
 	)
 
 	// Not Found
@@ -158,23 +153,20 @@ func TestNotFoundAndMethodNotAllowed(t *testing.T) {
 // test passing in string patterns for path, path prefix, and query
 func TestStringPatterns(t *testing.T) {
 	m := New()
-	m.Handle(
-		PathReString("^/test$"),
-		HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			_, _ = w.Write([]byte("path"))
-		}),
+	m.HandleFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte("path"))
+	},
+		PathRegexp(regexp.MustCompile("^/test$")),
 	)
-	m.Handle(
-		PathPrefixReString("^/prefix"),
-		HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			_, _ = w.Write([]byte("prefix"))
-		}),
+	m.HandleFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte("prefix"))
+	},
+		PathPrefix("/prefix"),
 	)
-	m.Handle(
-		QueryReString("key", "^value$"),
-		HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			_, _ = w.Write([]byte("query"))
-		}),
+	m.HandleFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte("query"))
+	},
+		QueryRegexp("key", regexp.MustCompile("^value$")),
 	)
 
 	// Test PathReString
@@ -202,5 +194,153 @@ func TestStringPatterns(t *testing.T) {
 	m.ServeHTTP(resp, reqObj)
 	if resp.Body.String() != "query" {
 		t.Errorf("Expected response body to be 'query', got %q", resp.Body.String())
+	}
+}
+
+// test common pattern parsing using helper functions for path, path prefix, and path regexp
+func TestHelperFunctions(t *testing.T) {
+	m := New()
+	fn := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		val := r.PathValue("id")
+		_, _ = fmt.Fprintf(w, "ok:%v", val)
+	})
+	m.Get("/{id:*}/create", fn)
+	m.Prefix("/{id}/test", fn)
+	// Test the helper function route
+	req := "/123/create"
+	resp := httptest.NewRecorder()
+	reqObj, _ := http.NewRequest("GET", req, nil)
+	m.ServeHTTP(resp, reqObj)
+	if resp.Body.String() != "ok:123" {
+		t.Errorf("Expected response body to be 'ok:123', got %q", resp.Body.String())
+	}
+
+	req = "/456/abc/789/create"
+	resp = httptest.NewRecorder()
+	reqObj, _ = http.NewRequest("GET", req, nil)
+	m.ServeHTTP(resp, reqObj)
+	if resp.Body.String() != "ok:456/abc/789" {
+		t.Errorf("Expected response body to be 'ok:456/abc/789', got %q", resp.Body.String())
+	}
+
+	// Test the regexp route
+	req = "/123/test/456"
+	resp = httptest.NewRecorder()
+	reqObj, _ = http.NewRequest("GET", req, nil)
+	m.ServeHTTP(resp, reqObj)
+	if resp.Body.String() != "ok:123" {
+		t.Errorf("Expected response body to be 'ok:123', got %q", resp.Body.String())
+	}
+}
+
+// test header matching using the Header helper function
+func TestHeader(t *testing.T) {
+	m := New()
+	m.Header("X-Test", "value", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte("header"))
+	}), Path("/images"))
+	m.Get("/images", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte("no header"))
+	}))
+	req := "/images"
+	resp := httptest.NewRecorder()
+	reqObj, _ := http.NewRequest("GET", req, nil)
+	reqObj.Header.Set("X-Test", "value")
+	m.ServeHTTP(resp, reqObj)
+	if resp.Body.String() != "header" {
+		t.Errorf("Expected response body to be 'header', got %q", resp.Body.String())
+	}
+	// Test without the header
+	req = "/images"
+	resp = httptest.NewRecorder()
+	reqObj, _ = http.NewRequest("GET", req, nil)
+	m.ServeHTTP(resp, reqObj)
+	if resp.Body.String() != "no header" {
+		t.Errorf("Expected response body to be 'no header', got %q", resp.Body.String())
+	}
+}
+
+// test hostname matching using the HostName helper function
+func TestHostName(t *testing.T) {
+	m := New()
+	m.HostName("example.com", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte("hostname"))
+	}))
+	m.HostName("{subdomain}.example.com", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(r.PathValue("subdomain")))
+	}))
+	m.Get("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte("no hostname"))
+	}))
+	req := "/"
+	resp := httptest.NewRecorder()
+	reqObj, _ := http.NewRequest("GET", req, nil)
+	reqObj.Host = "example.com"
+	m.ServeHTTP(resp, reqObj)
+	if resp.Body.String() != "hostname" {
+		t.Errorf("Expected response body to be 'hostname', got %q", resp.Body.String())
+	}
+	// Test without the hostname
+	req = "/"
+	resp = httptest.NewRecorder()
+	reqObj, _ = http.NewRequest("GET", req, nil)
+	reqObj.Host = "other.com"
+	m.ServeHTTP(resp, reqObj)
+	if resp.Body.String() != "no hostname" {
+		t.Errorf("Expected response body to be 'no hostname', got %q", resp.Body.String())
+	}
+	// Test with a subdomain
+	req = "/"
+	resp = httptest.NewRecorder()
+	reqObj, _ = http.NewRequest("GET", req, nil)
+	reqObj.Host = "sub.example.com"
+	m.ServeHTTP(resp, reqObj)
+	if resp.Body.String() != "sub" {
+		t.Errorf("Expected response body to be 'sub', got %q", resp.Body.String())
+	}
+}
+
+// test query matching using the Query helper function
+func TestQuery(t *testing.T) {
+	m := New()
+	m.Query("q", "value", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte("query"))
+	}), Path("/search"))
+	m.Query("version", "v{id}", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(r.PathValue("id")))
+	}), Path("/search"))
+	m.Get("/search", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte("no query"))
+	}))
+	req := "/search?q=value"
+	resp := httptest.NewRecorder()
+	reqObj, _ := http.NewRequest("GET", req, nil)
+	m.ServeHTTP(resp, reqObj)
+	if resp.Body.String() != "query" {
+		t.Errorf("Expected response body to be 'query', got %q", resp.Body.String())
+	}
+	// Test without the query parameter
+	req = "/search"
+	resp = httptest.NewRecorder()
+	reqObj, _ = http.NewRequest("GET", req, nil)
+	m.ServeHTTP(resp, reqObj)
+	if resp.Body.String() != "no query" {
+		t.Errorf("Expected response body to be 'no query', got %q", resp.Body.String())
+	}
+	// Test with the version query parameter
+	req = "/search?version=v123"
+	resp = httptest.NewRecorder()
+	reqObj, _ = http.NewRequest("GET", req, nil)
+	m.ServeHTTP(resp, reqObj)
+	if resp.Body.String() != "123" {
+		t.Errorf("Expected response body to be '123', got %q", resp.Body.String())
+	}
+	// Test with an invalid version query parameter
+	req = "/search?version=123"
+	resp = httptest.NewRecorder()
+	reqObj, _ = http.NewRequest("GET", req, nil)
+	m.ServeHTTP(resp, reqObj)
+	if resp.Body.String() != "no query" {
+		t.Errorf("Expected response body to be 'no query', got %q", resp.Body.String())
 	}
 }

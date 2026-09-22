@@ -7,16 +7,17 @@ import (
 	"strings"
 )
 
-type HTTPMethod string
-
 const (
-	MethodGet     HTTPMethod = "GET"
-	MethodPost    HTTPMethod = "POST"
-	MethodPut     HTTPMethod = "PUT"
-	MethodDelete  HTTPMethod = "DELETE"
-	MethodPatch   HTTPMethod = "PATCH"
-	MethodOptions HTTPMethod = "OPTIONS"
-	MethodHead    HTTPMethod = "HEAD"
+	MethodGet     string = "GET"
+	MethodPost    string = "POST"
+	MethodPut     string = "PUT"
+	MethodDelete  string = "DELETE"
+	MethodPatch   string = "PATCH"
+	MethodOptions string = "OPTIONS"
+	MethodHead    string = "HEAD"
+	MethodConnect string = "CONNECT"
+	MethodTrace   string = "TRACE"
+	MethodQuery   string = "QUERY"
 )
 
 type handler struct {
@@ -24,7 +25,7 @@ type handler struct {
 	matchPrio int
 	setPrio   int
 	handler   http.Handler
-	method    []HTTPMethod
+	method    []string
 	mw        []func(http.Handler) http.Handler
 }
 
@@ -47,10 +48,10 @@ func (h *handler) methodAllowed(method string) (bool, []string) {
 	method = strings.ToUpper(method)
 	allowed := make([]string, len(h.method))
 	for i, m := range h.method {
-		if string(m) == method {
+		if m == method {
 			return true, allowed
 		}
-		allowed[i] = string(m)
+		allowed[i] = m
 	}
 	return false, allowed
 }
@@ -88,18 +89,23 @@ func New() *ReMux {
 }
 
 // Handle registers a new handler with the given pattern matchers and optional middleware. It appends the handler to the list of handlers and sorts them based on priority.
-func (m *ReMux) Handle(opts ...PatternMatcher) {
+func (m *ReMux) Handle(h http.Handler, opts ...HandlerOptions) {
 	hh := &handler{
 		matchers: []Matcher{},
 		mw:       []func(http.Handler) http.Handler{},
 		setPrio:  0,
-		handler:  notFoundHandler(),
+		handler:  h,
 	}
 	for _, opt := range opts {
 		opt(hh)
 	}
 	m.handlers = append(m.handlers, hh)
 	m.sortKeys()
+}
+
+// Handle registers a new handler with the given pattern matchers and optional middleware. It appends the handler to the list of handlers and sorts them based on priority.
+func (m *ReMux) HandleFunc(hf http.HandlerFunc, opts ...HandlerOptions) {
+	m.Handle(http.HandlerFunc(hf), opts...)
 }
 
 // NotFound sets the handler to be called when no matching route is found. If nil is passed, it resets to the default not found handler.
@@ -161,7 +167,7 @@ func (m *ReMux) Sub(prefix string) *ReMux {
 	}
 
 	m.Handle(
-		Handler(subMux),
+		subMux,
 		PathPrefix(prefix+"/"),
 		Use(fn),
 	)
@@ -230,4 +236,104 @@ func methodNotAllowedHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
 	}
+}
+
+// handle is a helper method that sets up the route with the specified HTTP methods and path pattern.
+func (m *ReMux) handle(method []string, path string, handler http.Handler, opts ...HandlerOptions) {
+	str, re := mustStrToPattern(path, patternPath, false)
+	if re == nil {
+		opts = append(opts, Path(str), Methods(method...))
+		m.Handle(handler, opts...)
+	} else {
+		opts = append(opts, PathRegexp(re), Methods(method...))
+		m.Handle(handler, opts...)
+	}
+
+}
+
+// Get is a helper method that sets up a route for the GET HTTP method.
+func (m *ReMux) Get(path string, handler http.Handler, opts ...HandlerOptions) {
+	m.handle([]string{"GET"}, path, handler, opts...)
+}
+
+// Prefix is a helper method that sets up a route for any HTTP method with the specified path prefix.
+func (m *ReMux) Prefix(path string, handler http.Handler, opts ...HandlerOptions) {
+	str, re := mustStrToPattern(path, patternPath, true)
+	if re == nil {
+		opts = append(opts, PathPrefix(str))
+	} else {
+		opts = append(opts, PathRegexp(re))
+	}
+	m.Handle(handler, opts...)
+}
+
+// Post is a helper method that sets up a route for the POST HTTP method.
+func (m *ReMux) Post(path string, handler http.Handler, opts ...HandlerOptions) {
+	m.handle([]string{"POST"}, path, handler, opts...)
+}
+
+// Put is a helper method that sets up a route for the PUT HTTP method.
+func (m *ReMux) Put(path string, handler http.Handler, opts ...HandlerOptions) {
+	m.handle([]string{"PUT"}, path, handler, opts...)
+}
+
+// Delete is a helper method that sets up a route for the DELETE HTTP method.
+func (m *ReMux) Delete(path string, handler http.Handler, opts ...HandlerOptions) {
+	m.handle([]string{"DELETE"}, path, handler, opts...)
+}
+
+// Patch is a helper method that sets up a route for the PATCH HTTP method.
+func (m *ReMux) Patch(path string, handler http.Handler, opts ...HandlerOptions) {
+	m.handle([]string{"PATCH"}, path, handler, opts...)
+}
+
+// Options is a helper method that sets up a route for the OPTIONS HTTP method.
+func (m *ReMux) Options(path string, handler http.Handler, opts ...HandlerOptions) {
+	m.handle([]string{"OPTIONS"}, path, handler, opts...)
+}
+
+// Head is a helper method that sets up a route for the HEAD HTTP method.
+func (m *ReMux) Head(path string, handler http.Handler, opts ...HandlerOptions) {
+	m.handle([]string{"HEAD"}, path, handler, opts...)
+}
+
+// Connect is a helper method that sets up a route for the CONNECT HTTP method.
+func (m *ReMux) Connect(path string, handler http.Handler, opts ...HandlerOptions) {
+	m.handle([]string{"CONNECT"}, path, handler, opts...)
+}
+
+// Trace is a helper method that sets up a route for the TRACE HTTP method.
+func (m *ReMux) Trace(path string, handler http.Handler, opts ...HandlerOptions) {
+	m.handle([]string{"TRACE"}, path, handler, opts...)
+}
+
+// Header is a helper method that sets up a route for the HEADER HTTP method.
+func (m *ReMux) Header(k, v string, handler http.Handler, opts ...HandlerOptions) {
+	str, re := mustStrToPattern(v, patternAny, false)
+	if re == nil {
+		opts = append(opts, Header(k, str))
+	} else {
+		opts = append(opts, HeaderRegexp(k, re))
+	}
+	m.Handle(handler, opts...)
+}
+
+func (m *ReMux) Query(k, v string, handler http.Handler, opts ...HandlerOptions) {
+	str, re := mustStrToPattern(v, patternAny, false)
+	if re == nil {
+		opts = append(opts, Query(k, str))
+	} else {
+		opts = append(opts, QueryRegexp(k, re))
+	}
+	m.Handle(handler, opts...)
+}
+
+func (m *ReMux) HostName(v string, handler http.Handler, opts ...HandlerOptions) {
+	str, re := mustStrToPattern(v, patternAny, false)
+	if re == nil {
+		opts = append(opts, HostName(str))
+	} else {
+		opts = append(opts, HostNameRegexp(re))
+	}
+	m.Handle(handler, opts...)
 }
