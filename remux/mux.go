@@ -149,7 +149,7 @@ func (m *ReMux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				m.methodNotAllowed,
 				m.mw...,
 			).ServeHTTP(w, r)
-			
+
 		}
 		return
 	}
