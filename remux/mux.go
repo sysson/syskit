@@ -136,10 +136,20 @@ func (m *ReMux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h, matches, allowedMethods := m.findMatch(r)
 	if h == nil {
 		if len(allowedMethods) == 0 {
-			m.notFound.ServeHTTP(w, r)
+
+			wrapHandler(
+				m.notFound,
+				m.mw...,
+			).ServeHTTP(w, r)
+
 		} else {
+
 			addAllowedMethodsHeader(w, allowedMethods)
-			m.methodNotAllowed.ServeHTTP(w, r)
+			wrapHandler(
+				m.methodNotAllowed,
+				m.mw...,
+			).ServeHTTP(w, r)
+
 		}
 		return
 	}
@@ -261,14 +271,14 @@ func methodNotAllowedHandler() http.HandlerFunc {
 }
 
 // handle is a helper method that sets up the route with the specified HTTP methods and path pattern.
-func (m *ReMux) handle(method []string, path string, handler http.Handler, opts ...HandlerOptions) {
-	opts = append(opts, Path(path), Methods(method...))
+func (m *ReMux) Method(method string, path string, handler http.Handler, opts ...HandlerOptions) {
+	opts = append(opts, Path(path), Methods(method))
 	m.Handle(handler, opts...)
 }
 
 // Get is a helper method that sets up a route for the GET HTTP method.
 func (m *ReMux) Get(path string, handler http.Handler, opts ...HandlerOptions) {
-	m.handle([]string{"GET"}, path, handler, opts...)
+	m.Method("GET", path, handler, opts...)
 }
 
 // Prefix is a helper method that sets up a route for any HTTP method with the specified path prefix.
@@ -279,42 +289,42 @@ func (m *ReMux) Prefix(path string, handler http.Handler, opts ...HandlerOptions
 
 // Post is a helper method that sets up a route for the POST HTTP method.
 func (m *ReMux) Post(path string, handler http.Handler, opts ...HandlerOptions) {
-	m.handle([]string{"POST"}, path, handler, opts...)
+	m.Method("POST", path, handler, opts...)
 }
 
 // Put is a helper method that sets up a route for the PUT HTTP method.
 func (m *ReMux) Put(path string, handler http.Handler, opts ...HandlerOptions) {
-	m.handle([]string{"PUT"}, path, handler, opts...)
+	m.Method("PUT", path, handler, opts...)
 }
 
 // Delete is a helper method that sets up a route for the DELETE HTTP method.
 func (m *ReMux) Delete(path string, handler http.Handler, opts ...HandlerOptions) {
-	m.handle([]string{"DELETE"}, path, handler, opts...)
+	m.Method("DELETE", path, handler, opts...)
 }
 
 // Patch is a helper method that sets up a route for the PATCH HTTP method.
 func (m *ReMux) Patch(path string, handler http.Handler, opts ...HandlerOptions) {
-	m.handle([]string{"PATCH"}, path, handler, opts...)
+	m.Method("PATCH", path, handler, opts...)
 }
 
 // Options is a helper method that sets up a route for the OPTIONS HTTP method.
 func (m *ReMux) Options(path string, handler http.Handler, opts ...HandlerOptions) {
-	m.handle([]string{"OPTIONS"}, path, handler, opts...)
+	m.Method("OPTIONS", path, handler, opts...)
 }
 
 // Head is a helper method that sets up a route for the HEAD HTTP method.
 func (m *ReMux) Head(path string, handler http.Handler, opts ...HandlerOptions) {
-	m.handle([]string{"HEAD"}, path, handler, opts...)
+	m.Method("HEAD", path, handler, opts...)
 }
 
 // Connect is a helper method that sets up a route for the CONNECT HTTP method.
 func (m *ReMux) Connect(path string, handler http.Handler, opts ...HandlerOptions) {
-	m.handle([]string{"CONNECT"}, path, handler, opts...)
+	m.Method("CONNECT", path, handler, opts...)
 }
 
 // Trace is a helper method that sets up a route for the TRACE HTTP method.
 func (m *ReMux) Trace(path string, handler http.Handler, opts ...HandlerOptions) {
-	m.handle([]string{"TRACE"}, path, handler, opts...)
+	m.Method("TRACE", path, handler, opts...)
 }
 
 // Header is a helper method that sets up a route for the HEADER HTTP method.
