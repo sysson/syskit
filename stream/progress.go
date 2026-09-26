@@ -76,14 +76,20 @@ func ChanOutputContext(ctx context.Context, progressChan chan<- Progress) Progre
 			select {
 			case <-pw.ctx.Done():
 				return
-			case p := <-pw.in:
+			case p, ok := <-pw.in:
+				if !ok {
+					return
+				}
 				if !pw.writeOut(p) {
 					return
 				}
 			case <-pw.closed:
 				for {
 					select {
-					case p := <-pw.in:
+					case p, ok := <-pw.in:
+						if !ok {
+							return
+						}
 						if !pw.writeOut(p) {
 							return
 						}
