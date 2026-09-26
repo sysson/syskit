@@ -212,10 +212,11 @@ func main() {
 `NewProgressReader` reports bytes read and forwards updates to any
 `ProgressWriter`. `NewJSONProgressOutput` writes progress as JSON messages,
 while `NewStdoutWriter` and `NewStderrWriter` wrap command output as stream
-messages. `ChanOutput` forwards progress updates to a channel and can be
-closed safely even when the channel consumer is no longer receiving. It is
-useful when progress should be handled by another goroutine; `DiscardOutput`
-disables progress reporting without changing the caller’s control flow.
+messages. `ChanOutput` forwards progress updates to a channel and guarantees
+that writes accepted before `Close()` are delivered before `Close()` returns.
+Use `ChanOutputContext` when you need cancellation to abort a blocked
+consumer. `DiscardOutput` disables progress reporting without changing the
+caller’s control flow.
 
 
 ---

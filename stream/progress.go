@@ -1,6 +1,7 @@
 package stream
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"sync"
@@ -36,16 +37,19 @@ type ProgressWriter interface {
 }
 
 type progressWriter struct {
-	in   chan Progress
-	out  chan<- Progress
-	stop chan struct{}
-	wg   sync.WaitGroup
-	once sync.Once
+	in     chan Progress
+	out    chan<- Progress
+	ctx    context.Context
+	closed chan struct{}
+	wg     sync.WaitGroup
+	once   sync.Once
 }
 
 func (pw *progressWriter) WriteProgress(p Progress) error {
 	select {
-	case <-pw.stop:
+	case <-pw.closed:
+		return io.EOF
+	case <-pw.ctx.Done():
 		return io.EOF
 	case pw.in <- p:
 		return nil
@@ -55,21 +59,37 @@ func (pw *progressWriter) WriteProgress(p Progress) error {
 // ChanOutput returns an Output that writes progress updates to the
 // supplied channel.
 func ChanOutput(progressChan chan<- Progress) ProgressWriter {
+	return ChanOutputContext(context.Background(), progressChan)
+}
+
+// ChanOutputContext returns an Output that writes progress updates to the
+// supplied channel and can be cancelled using ctx.
+func ChanOutputContext(ctx context.Context, progressChan chan<- Progress) ProgressWriter {
 	pw := &progressWriter{
-		in:   make(chan Progress),
-		out:  progressChan,
-		stop: make(chan struct{}),
+		in:     make(chan Progress),
+		out:    progressChan,
+		ctx:    ctx,
+		closed: make(chan struct{}),
 	}
 	pw.wg.Go(func() {
 		for {
 			select {
-			case <-pw.stop:
+			case <-pw.ctx.Done():
 				return
 			case p := <-pw.in:
-				select {
-				case <-pw.stop:
+				if !pw.writeOut(p) {
 					return
-				case pw.out <- p:
+				}
+			case <-pw.closed:
+				for {
+					select {
+					case p := <-pw.in:
+						if !pw.writeOut(p) {
+							return
+						}
+					default:
+						return
+					}
 				}
 			}
 		}
@@ -78,8 +98,17 @@ func ChanOutput(progressChan chan<- Progress) ProgressWriter {
 	return pw
 }
 
+func (pw *progressWriter) writeOut(p Progress) bool {
+	select {
+	case <-pw.ctx.Done():
+		return false
+	case pw.out <- p:
+		return true
+	}
+}
+
 func (pw *progressWriter) Close() error {
-	pw.once.Do(func() { close(pw.stop) })
+	pw.once.Do(func() { close(pw.closed) })
 	pw.wg.Wait()
 	return nil
 }
