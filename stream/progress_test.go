@@ -102,7 +102,7 @@ func TestChanOutputCloseDeliversAcceptedWrites(t *testing.T) {
 	defer close(done)
 
 	want := int(accepted.Load())
-	for got := 0; got < want; got++ {
+	for got := range want {
 		select {
 		case <-received:
 		case <-time.After(time.Second):
