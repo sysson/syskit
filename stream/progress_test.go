@@ -86,7 +86,10 @@ func TestChanOutputCloseDeliversAcceptedWrites(t *testing.T) {
 			select {
 			case <-done:
 				return
-			case p := <-progressChan:
+			case p, ok := <-progressChan:
+				if !ok {
+					return
+				}
 				received <- p
 			}
 		}
