@@ -80,11 +80,15 @@ func TestChanOutputCloseDeliversAcceptedWrites(t *testing.T) {
 	}
 
 	received := make(chan Progress, n)
-	drained := make(chan struct{})
+	done := make(chan struct{})
 	go func() {
-		defer close(drained)
-		for p := range progressChan {
-			received <- p
+		for {
+			select {
+			case <-done:
+				return
+			case p := <-progressChan:
+				received <- p
+			}
 		}
 	}()
 
@@ -92,11 +96,15 @@ func TestChanOutputCloseDeliversAcceptedWrites(t *testing.T) {
 	if err := output.Close(); err != nil {
 		t.Fatalf("Close() error = %v", err)
 	}
-	close(progressChan)
-	<-drained
+	defer close(done)
 
-	if got, want := len(received), int(accepted.Load()); got != want {
-		t.Fatalf("received %d messages, want %d", got, want)
+	want := int(accepted.Load())
+	for got := 0; got < want; got++ {
+		select {
+		case <-received:
+		case <-time.After(time.Second):
+			t.Fatalf("received %d messages, want %d", got, want)
+		}
 	}
 }
 
