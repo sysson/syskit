@@ -25,13 +25,21 @@ func KeyFromContext[T, V any](ctx context.Context, key T) (V, bool) {
 }
 
 // WriteJSON writes the given value as a JSON response with the specified HTTP status code.
-func WriteJSON(w http.ResponseWriter, code int, v any) error {
+func WriteJSON(w http.ResponseWriter, code int, v any, opts ...json.Options) error {
+	body, err := json.Marshal(v,
+		append([]json.Options{
+			jsontext.EscapeForHTML(false),
+			json.Deterministic(true),
+		}, opts...)...,
+	)
+	if err != nil {
+		return err
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
-	return json.MarshalWrite(w, v,
-		jsontext.EscapeForHTML(false),
-		json.Deterministic(true),
-	)
+	_, err = w.Write(body)
+	return err
 }
 
 // ParseJSON parses the JSON request body into the specified value.
